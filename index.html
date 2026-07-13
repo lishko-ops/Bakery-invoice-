@@ -9,8 +9,8 @@
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icon-192.png">
 <link rel="icon" type="image/png" href="./icon-192.png">
-<meta name="apple-mobile-web-app-title" content="חשבוניות גן">
-<title>גן בשן — חשבוניות וקבלות</title>
+<meta name="apple-mobile-web-app-title" content="עדן הגליל">
+<title>מאפיית עדן הגליל — חשבוניות וקבלות</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700;800&family=Assistant:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
@@ -537,11 +537,11 @@
   <button class="back-btn" id="backBtn" aria-label="חזרה">&#8594;</button>
   <div class="head-center">
     <button class="profile-label" id="profileLabel" aria-label="עריכת פרופיל מנהלת">פרופיל מנהלת <span class="pencil">&#9999;&#65039;</span></button>
-    <button class="logo" id="profileBtn" aria-label="עריכת פרופיל מנהל/ת הגן">
+    <button class="logo" id="profileBtn" aria-label="עריכת פרופיל מנהל/ת המאפייה">
       <span id="profileEmoji">&#127890;</span>
       <img id="profileImg" alt="" hidden>
     </button>
-    <h1 id="headerTitle">גן בשן</h1>
+    <h1 id="headerTitle">מאפיית עדן הגליל</h1>
     <div class="sub" id="headerSub">ניהול חשבוניות וקבלות</div>
   </div>
 </header>
@@ -742,7 +742,7 @@
 <div class="modal" id="profileModal">
   <div class="modal-card">
     <div class="modal-grip"></div>
-    <h3>פרופיל מנהל/ת הגן</h3>
+    <h3>פרופיל מנהל/ת המאפייה</h3>
     <div class="m-meta">הפרטים והתמונה נשמרים במכשיר שלך בלבד.</div>
 
     <div class="profile-photo-wrap">
@@ -758,7 +758,7 @@
 
     <input id="profileFirstName" class="profile-field" type="text" autocomplete="off" placeholder="שם פרטי">
     <input id="profileLastName" class="profile-field" type="text" autocomplete="off" placeholder="שם משפחה">
-    <input id="profileGanName" class="profile-field" type="text" autocomplete="off" placeholder="שם הגן">
+    <input id="profileGanName" class="profile-field" type="text" autocomplete="off" placeholder="שם המאפייה">
 
     <div class="m-actions">
       <button class="btn btn-close" id="profileSave">שמירה</button>
@@ -791,10 +791,10 @@
   <div class="modal-card">
     <div class="modal-grip"></div>
     <h3>מדיניות פרטיות ותנאי שימוש</h3>
-    <div class="m-meta">חשבוניות גן</div>
+    <div class="m-meta">חשבוניות עדן הגליל</div>
     <div class="privacy-text">
       <h4>פיתוח, עיצוב ובעלות</h4>
-      <p>האפליקציה &laquo;חשבוניות גן&raquo; פותחה, עוצבה ונבנתה במלואה על ידי <b>מרדכי עמר</b>. כל הזכויות שמורות לו.</p>
+      <p>האפליקציה &laquo;חשבוניות עדן הגליל&raquo; פותחה, עוצבה ונבנתה במלואה על ידי <b>מרדכי עמר</b>. כל הזכויות שמורות לו.</p>
 
       <h4>זכויות יוצרים וקניין רוחני</h4>
       <p>כלל הרכיבים &mdash; הקוד, העיצוב, הממשק, הגרפיקה, הרעיון והמבנה &mdash; הם קניינו הרוחני הבלעדי של מרדכי עמר ומוגנים בזכויות יוצרים על פי דין.</p>
@@ -892,7 +892,7 @@
 <div class="install-banner" id="installBanner">
   <img class="ib-icon" src="./icon-192.png" alt="">
   <div class="ib-text">
-    <div class="ib-title">התקינו את חשבוניות גן</div>
+    <div class="ib-title">התקינו את חשבוניות עדן הגליל</div>
     <div class="ib-sub" id="ibSub">גישה מהירה ממסך הבית, גם בלי דפדפן</div>
   </div>
   <button class="ib-install" id="ibInstall">התקנה</button>
@@ -1930,7 +1930,7 @@ function getProfile(){
 }
 function ganDisplayName(){
   const n=(getProfile().ganName||'').trim();
-  return n||'גן בשן';
+  return n||'מאפיית עדן הגליל';
 }
 function applyProfile(){
   const p=getProfile();
