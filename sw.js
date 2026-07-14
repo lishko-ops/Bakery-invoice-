@@ -4,7 +4,7 @@
    נטענת הגרסה העדכנית ביותר; ללא אינטרנט — נופלים ל-cache.
    שאר הנכסים (אייקונים/מניפסט) — cache-first.
    בקשות חוץ (Gemini, גופנים) עוברות תמיד לרשת ולא נשמרות ב-cache. */
-const CACHE = 'gan-receipts-v124';
+const CACHE = 'gan-receipts-v125';
 const ASSETS = [
   './',
   './index.html',

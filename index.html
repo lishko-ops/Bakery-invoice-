@@ -615,6 +615,11 @@
     </div>
 
     <div class="field">
+      <label for="fInvoiceNumber">מספר חשבונית (אופציונלי)</label>
+      <input id="fInvoiceNumber" type="text" placeholder="למשל: 12345">
+    </div>
+
+    <div class="field">
       <label for="fTotal">סכום סופי (כולל מע"מ, אחרי הנחות) ₪</label>
       <input id="fTotal" type="number" step="0.01" inputmode="decimal" placeholder="0.00">
     </div>
@@ -693,6 +698,7 @@
     <div class="zoom-wrap" id="zoomWrap"><img id="mImage" alt="תמונת המסמך"></div>
     <div class="m-details">
       <div><b>סכום סופי:</b> <span id="mTotal"></span></div>
+      <div id="mInvoiceNumberRow" style="margin-top:6px;display:none"><b>מספר חשבונית:</b> <span id="mInvoiceNumber"></span></div>
       <div style="margin-top:6px"><b>מתויק בחודש:</b> <span id="mFileMonth"></span></div>
     </div>
     <div class="m-actions">
@@ -862,7 +868,7 @@
 <div class="dupe-modal" id="dupeModal">
   <div class="modal-card">
     <div class="modal-grip"></div>
-    <h3>&#9888;&#65039; ייתכן שכבר קיים מסמך זהה</h3>
+    <h3 id="dupeTitle">&#9888;&#65039; ייתכן שכבר קיים מסמך זהה</h3>
     <div class="m-meta">נמצא מסמך עם <b>אותו ספק, סכום ותאריך</b>. כדאי להשוות לפני ההוספה.</div>
     <div class="m-details" id="dupeDetails"></div>
     <div class="m-actions" style="flex-wrap:wrap">
@@ -1465,6 +1471,7 @@ async function extractWithGemini(dataURL){
     '"businessName": שם העסק המופיע הכי גבוה בראש הקבלה (שם העסק, לא שם הלקוח). מחרוזת.',
     '"total": הסכום הסופי לתשלום כולל מע"מ ואחרי הנחות, כמספר בלבד ללא סימן מטבע ובלי פסיקים. אם לא נמצא — 0.',
     '"date": התאריך המודפס על הקבלה/החשבונית, בפורמט YYYY-MM-DD. שים לב: בישראל התאריך כתוב יום/חודש/שנה — המספר השמאלי הוא היום, האמצעי החודש, והימני השנה. אם לא נמצא תאריך — החזר מחרוזת ריקה "".',
+    '"invoiceNumber": מספר החשבונית/הקבלה כפי שמודפס על המסמך (לרוב ליד המילים "חשבונית מס\'", "מספר", "אסמכתא" או "#"). מחרוזת. אם לא נמצא — מחרוזת ריקה "".',
     'אל תכלול פירוט פריטים ואל תוסיף שדות אחרים.'
   ].join('\n');
   const body={
@@ -1496,7 +1503,8 @@ async function extractWithGemini(dataURL){
   let date=(obj.date||'').toString().trim();
   /* מוודאים פורמט YYYY-MM-DD תקין; אחרת מתעלמים */
   if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||isNaN(new Date(date+'T12:00:00').getTime()))date='';
-  return{businessName:(obj.businessName||'').toString().trim(),total,date};
+  const invoiceNumber=(obj.invoiceNumber||'').toString().trim();
+  return{businessName:(obj.businessName||'').toString().trim(),total,date,invoiceNumber};
 }
 
 /* =========================================================
@@ -1560,6 +1568,7 @@ async function processFile(file){
 
     /* מילוי מסך האישור — ספק, סכום ותאריך (התאריך מהסריקה, אחרת היום) */
     document.getElementById('fSupplier').value=res.businessName||'';
+    document.getElementById('fInvoiceNumber').value=res.invoiceNumber||'';
     document.getElementById('fTotal').value=res.total!==''?res.total:'';
     document.getElementById('fDate').value=res.date||todayISODate();
     setPendingType('receipt');   /* ברירת מחדל — ניתן לשנות ידנית במסך האישור */
@@ -1649,13 +1658,14 @@ async function findDuplicate(supplier,total,dateOnly){
 }
 document.getElementById('btnSave').onclick=async()=>{
   const supplier=document.getElementById('fSupplier').value.trim()||'ספק לא מזוהה';
+  const invoiceNumber=document.getElementById('fInvoiceNumber').value.trim();
   const total=parseFloat(document.getElementById('fTotal').value)||0;
   /* תאריך המסמך מהשדה (ישראלי: יום/חודש/שנה); אם ריק — תאריך היום */
   const dStr=document.getElementById('fDate').value;
   const dateOnly=/^\d{4}-\d{2}-\d{2}$/.test(dStr)?dStr:todayISODate();
   const fileMonth=dateOnly.slice(0,7);        /* חודש התיוק — נגזר מתאריך המסמך */
   const docObj={
-    type:pendingType,supplier,total,
+    type:pendingType,supplier,invoiceNumber,total,
     image:pendingImage,
     date:dateOnly+'T12:00:00',                /* צהריים מקומי כדי למנוע הזזת יום באזורי זמן */
     fileMonth:fileMonth,
@@ -1673,10 +1683,24 @@ const dupeModalEl=document.getElementById('dupeModal');
 const compareViewEl=document.getElementById('compareView');
 function openDupeAlert(){
   const d=dupeExisting;
+  const newNum=(pendingDoc&&pendingDoc.invoiceNumber||'').trim();
+  const oldNum=(d.invoiceNumber||'').trim();
+  const numsDiffer=newNum&&oldNum&&normSupplier(newNum)!==normSupplier(oldNum);
+  const title=document.getElementById('dupeTitle');
+  if(title)title.textContent=numsDiffer
+    ?'ייתכן שזה דף נוסף לאותה חשבונית'
+    :'המסמך הזה כבר קיים';
   document.getElementById('dupeDetails').innerHTML=
     '<div><b>ספק:</b> '+(d.supplier||'')+'</div>'+
     '<div><b>סכום:</b> '+fmtMoney(d.total)+'</div>'+
-    '<div><b>תאריך:</b> '+fmtDate(d.date)+'</div>';
+    '<div><b>תאריך:</b> '+fmtDate(d.date)+'</div>'+
+    (oldNum?'<div><b>מספר חשבונית קיים:</b> '+oldNum+'</div>':'')+
+    (newNum?'<div><b>מספר חשבונית חדש:</b> '+newNum+'</div>':'')+
+    (numsDiffer
+      ?'<div style="margin-top:8px">נמצא מסמך עם אותו ספק, סכום ותאריך — אך מספר החשבונית שונה. ייתכן שזה דף נוסף של אותה חשבונית, או חשבונית חדשה שכבר קיימת. בחרי אם להמשיך ולשמור בכל זאת, או לבטל.</div>'
+      :'');
+  const addBtn=document.getElementById('dupeAddAnyway');
+  if(addBtn)addBtn.textContent=numsDiffer?'המשך ושמירה':'הוסף בכל זאת';
   compareViewEl.classList.remove('open');
   dupeModalEl.classList.add('open');
 }
@@ -1852,6 +1876,8 @@ function openModal(doc){
     (doc.type==='invoice'?'חשבונית':'קבלה')+' · '+fmtDate(doc.date);
   document.getElementById('mImage').src=doc.image;
   document.getElementById('mTotal').textContent=fmtMoney(doc.total);
+  document.getElementById('mInvoiceNumberRow').style.display=doc.invoiceNumber?'':'none';
+  document.getElementById('mInvoiceNumber').textContent=doc.invoiceNumber||'';
   document.getElementById('mFileMonth').textContent=fmtMonthLabel(docMonth(doc));
   modal.classList.add('open');
   openModalHistory('docModal');
@@ -2260,6 +2286,7 @@ if('serviceWorker' in navigator){
         sid: d.sid,
         type: d.type || 'receipt',
         supplier: d.supplier || '',
+        invoiceNumber: d.invoiceNumber || '',
         total: Number(d.total) || 0,
         date: d.date || '',
         fileMonth: d.fileMonth || '',
