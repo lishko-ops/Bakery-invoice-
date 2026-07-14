@@ -1,0 +1,2658 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#222222">
+  <title>מאפיית עדן הגליל – מערכת הזמנות</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body style="margin:0;padding:0;background:#F5EDD8;">
+  <div id="root"></div>
+
+  <!-- React + Babel -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Storage shim: window.storage using localStorage -->
+  <script>
+  window.storage = {
+    get: async (key, shared) => {
+      try {
+        const val = localStorage.getItem((shared?'s:':'p:') + key);
+        return val !== null ? { key, value: val, shared: !!shared } : null;
+      } catch(e) { return null; }
+    },
+    set: async (key, value, shared) => {
+      try {
+        localStorage.setItem((shared?'s:':'p:') + key, value);
+        return { key, value, shared: !!shared };
+      } catch(e) { return null; }
+    },
+    delete: async (key, shared) => {
+      try {
+        localStorage.removeItem((shared?'s:':'p:') + key);
+        return { key, deleted: true, shared: !!shared };
+      } catch(e) { return null; }
+    },
+    list: async (prefix, shared) => {
+      try {
+        const pfx = (shared?'s:':'p:') + (prefix||'');
+        const keys = Object.keys(localStorage).filter(k=>k.startsWith(pfx)).map(k=>k.slice(shared?2:2));
+        return { keys, prefix, shared: !!shared };
+      } catch(e) { return { keys:[] }; }
+    }
+  };
+  </script>
+
+  <script type="text/babel" data-presets="react">
+  const { useState, useEffect, useCallback } = React;
+
+
+// ─── STORAGE HELPERS ───────────────────────────────────────────────────────────
+const KEYS = {
+  orders: "eden-orders-v1",
+  customers: "eden-customers-v1",
+  products: "eden-products-v1",
+  categories: "eden-categories-v1",
+  priceLists: "eden-pricelists-v1",
+  routes: "eden-routes-v1",
+  settings: "eden-settings-v1",
+};
+
+async function load(key) {
+  try {
+    const r = await window.storage.get(key, true);
+    return r ? JSON.parse(r.value) : null;
+  } catch { return null; }
+}
+async function save(key, val) {
+  try { await window.storage.set(key, JSON.stringify(val), true); } catch {}
+}
+
+// ─── LOGO ────────────────────────────────────────────────────────────────────────
+const LOGO_SRC = "data:image/png;base64,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";
+
+const LogoIcon = ({ size = 40 }) => (
+  <img src={LOGO_SRC} alt="עדן הגליל" style={{ width: size, height: "auto", display:"block" }} />
+);
+
+const LogoHeader = ({ size = 28, showText = false }) => (
+  <img src={LOGO_SRC} alt="עדן הגליל" style={{ height: size, width:"auto", display:"block" }} />
+);
+
+// ─── SEED DATA ─────────────────────────────────────────────────────────────────
+const SEED_CATEGORIES = [
+  { id: "cat-1", name: "לחמניות",                nameHi: "बन्स",                    order: 1 },
+  { id: "cat-2", name: "לחמים",                  nameHi: "रोटियाँ",                  order: 2 },
+  { id: "cat-3", name: "שתייה חמה",              nameHi: "गर्म पेय",                 order: 3 },
+  { id: "cat-4", name: "מוצרי מעדניה",           nameHi: "डेली उत्पाद",              order: 4 },
+  { id: "cat-5", name: "עוגות וקינוח קרם",       nameHi: "केक और मिठाई",             order: 5 },
+  { id: "cat-6", name: "עוגיות ומארזי קינוחים",  nameHi: "कुकीज़ और मिठाई बॉक्स",   order: 6 },
+];
+
+const SEED_PRODUCTS = [
+  { id:"p-1",  name:"לחמניה ארוכה",         nameHi:"लंबा बन",          categoryId:"cat-1", price:2,    minQty:1, maxQty:500, departments:["בצקים","אפייה","אריזה","שילוח"],          active:true },
+  { id:"p-2",  name:"שמנייה מתוק",           nameHi:"मीठी क्रीम बन",   categoryId:"cat-1", price:2.7,  minQty:1, maxQty:500, departments:["בצקים","הכנות","אפייה","אריזה","שילוח"], active:true },
+  { id:"p-3",  name:"לחמניית פרעצל",         nameHi:"प्रेट्ज़ेल बन",   categoryId:"cat-1", price:5,    minQty:1, maxQty:200, departments:["הכנות","אפייה","אריזה","שילוח"],          active:true },
+  { id:"p-4",  name:"חלה מרובעת",            nameHi:"चाला ब्रेड",      categoryId:"cat-2", price:8,    minQty:1, maxQty:100, departments:["בצקים","אפייה","אריזה","שילוח"],          active:true },
+  { id:"p-5",  name:"מחמצת אגוזים רוסטיק",   nameHi:"नट सॉर्डो",      categoryId:"cat-2", price:23,   minQty:1, maxQty:50,  departments:["הכנות","אפייה","אריזה","שילוח"],          active:true },
+  { id:"p-6",  name:"קפה הפוך",              nameHi:"उल्टा कॉफी",      categoryId:"cat-3", price:13,   minQty:1, maxQty:100, departments:["הכנות","אריזה","שילוח"],                  active:true },
+  { id:"p-7",  name:"אספרסו",                nameHi:"एस्प्रेसो",       categoryId:"cat-3", price:7,    minQty:1, maxQty:100, departments:["הכנות","שילוח"],                          active:true },
+  { id:"p-8",  name:"טונה מעושנת צ'ילי 🌶️",  nameHi:"स्मोक्ड टूना",   categoryId:"cat-4", price:21.9, minQty:1, maxQty:50,  departments:["אריזה","שילוח"],                         active:true },
+  { id:"p-9",  name:"עוגת פס קרמשניט",       nameHi:"क्रीम केक",       categoryId:"cat-5", price:65.9, minQty:1, maxQty:20,  departments:["שילוח"],                                 active:true },
+  { id:"p-10", name:"מארז אלפחורס ביסקוטי",  nameHi:"अल्फाजोर बॉक्स", categoryId:"cat-6", price:45,   minQty:1, maxQty:30,  departments:["שילוח"],                                 active:true },
+];
+
+const SEED_ROUTES = [
+  { id: "route-1", name: "קו קרית שמונה", area: "קרית שמונה והסביבה" },
+  { id: "route-2", name: "קו קיבוצים",    area: "קיבוצי הגליל" },
+  { id: "route-3", name: "קו מרכז",       area: "מרכז הגליל" },
+];
+
+const DEPARTMENTS = ["בצקים","הכנות","אפייה","אריזה","שילוח"];
+const DEPT_ORDER = { "בצקים": 0, "הכנות": 1, "אפייה": 2, "אריזה": 3, "שילוח": 4 };
+const DEPT_HI = { "בצקים":"आटा","הכנות":"तैयारी","אפייה":"बेकिंग","אריזה":"पैकिंग","שילוח":"डिलीवरी" };
+const DEPT_ICONS = { "בצקים":"🫓","הכנות":"🥄","אפייה":"🔥","אריזה":"📦","שילוח":"🚚" };
+
+// ─── DESIGN TOKENS ─────────────────────────────────────────────────────────────
+const C = {
+  bg: "#F5EDD8",            // קרם בהיר – Eden HaGalil brand
+  surface: "#FFFFFF",
+  surfaceDark: "#222222",   // רקע כהה של הלוגו
+  border: "#DDD0B0",
+  primary: "#222222",       // כמעט שחור – כרקע הלוגו
+  primaryLight: "#3D3530",
+  gold: "#B8965A",          // זהב – הצבע הראשי
+  goldLight: "#F5EDD8",     // קרם
+  goldDark: "#8A6E3E",
+  accent: "#B8965A",        // זהב כ-accent
+  accentLight: "#F5EDD8",
+  purple: "#7B6BA0",        // סגול של המותג
+  text: "#222222",
+  textMuted: "#7A6A50",
+  textLight: "#A8946A",
+  danger: "#C0392B",
+  dangerLight: "#FDECEA",
+  success: "#2D7A4F",
+  successLight: "#E8F5EE",
+  warning: "#C07A2A",
+  warningLight: "#FEF3DC",
+  dept: {
+    "בצקים": "#7B6BA0",     // סגול המותג
+    "הכנות": "#2563EB",
+    "אפייה": "#C0392B",
+    "אריזה": "#2D7A4F",
+    "שילוח": "#C07A2A",
+  }
+};
+
+const STATUS_LABELS = {
+  pending: "ממתין",
+  confirmed: "אושרה ✓",
+  in_progress: "בביצוע",
+  ready: "מוכן",
+  delivered: "נמסר",
+  cancelled: "בוטל",
+};
+
+// ─── UTILS ─────────────────────────────────────────────────────────────────────
+const uid = () => Math.random().toString(36).slice(2, 10);
+const fmt = (n) => {
+  const r = Math.round(n * 10) / 10;
+  return r % 1 === 0 ? r.toString() : r.toFixed(1);
+};
+const fmtDate = (d) => {
+  if (!d) return "";
+  const dt = new Date(d);
+  return dt.toLocaleDateString("he-IL", { weekday: "short", day: "numeric", month: "numeric" });
+};
+const today = () => new Date().toISOString().slice(0, 10);
+const tomorrow = () => {
+  const d = new Date(); d.setDate(d.getDate() + 1);
+  return d.toISOString().slice(0, 10);
+};
+
+// ─── GLOBAL STYLES ─────────────────────────────────────────────────────────────
+const GS = `
+  @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body, #root { width: 100%; margin: 0; padding: 0; overflow-x: hidden; }
+  body { font-family: 'Heebo', sans-serif; background: #F5EDD8; color: #222222; direction: rtl; }
+  ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: #E4E7EC; }
+  ::-webkit-scrollbar-thumb { background: #9CA3AF; border-radius: 2px; }
+  input, select, textarea { font-family: 'Heebo', sans-serif; }
+  button { font-family: 'Heebo', sans-serif; }
+`;
+
+// ─── REUSABLE COMPONENTS ───────────────────────────────────────────────────────
+const Btn = ({ children, onClick, variant = "primary", size = "md", disabled, style }) => {
+  const base = {
+    border: "none", cursor: disabled ? "not-allowed" : "pointer", borderRadius: 10,
+    fontFamily: "Heebo, sans-serif", fontWeight: 700, transition: "all 0.15s",
+    opacity: disabled ? 0.45 : 1,
+    padding: size === "sm" ? "6px 14px" : size === "lg" ? "14px 28px" : "10px 20px",
+    fontSize: size === "sm" ? 13 : size === "lg" ? 15 : 14,
+    ...style,
+  };
+  const variants = {
+    primary: { background: C.primary, color: "#fff", boxShadow: "0 2px 8px rgba(26,35,50,0.18)" },
+    secondary: { background: C.surface, color: C.primary, border: `1.5px solid ${C.border}` },
+    accent: { background: C.gold, color: "#fff", boxShadow: "0 2px 8px rgba(184,150,90,0.35)" },
+    danger: { background: C.danger, color: "#fff" },
+    ghost: { background: "transparent", color: C.textMuted, border: `1px solid ${C.border}` },
+  };
+  return <button style={{ ...base, ...variants[variant] }} onClick={onClick} disabled={disabled}>{children}</button>;
+};
+
+const Input = ({ label, value, onChange, placeholder, type = "text", required, style }) => (
+  <div style={{ marginBottom: 14 }}>
+    {label && <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: C.textMuted, marginBottom: 5, letterSpacing: 0.3 }}>{label}{required && <span style={{ color: C.danger }}> *</span>}</label>}
+    <input
+      type={type} value={value} onChange={e => onChange(e.target.value)}
+      placeholder={placeholder}
+      style={{ width: "100%", padding: "11px 14px", border: `1.5px solid ${C.border}`, borderRadius: 10, fontSize: 14, background: C.surface, color: C.text, outline: "none", boxShadow: "0 1px 3px rgba(0,0,0,0.05)", ...style }}
+    />
+  </div>
+);
+
+const Select = ({ label, value, onChange, options, required }) => (
+  <div style={{ marginBottom: 14 }}>
+    {label && <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: C.textMuted, marginBottom: 4 }}>{label}{required && <span style={{ color: C.danger }}> *</span>}</label>}
+    <select value={value} onChange={e => onChange(e.target.value)}
+      style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${C.border}`, borderRadius: 8, fontSize: 14, background: C.surface, color: C.text, outline: "none" }}>
+      {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+  </div>
+);
+
+const Badge = ({ children, color = C.primary, bg }) => (
+  <span style={{ display: "inline-block", padding: "3px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, letterSpacing: 0.2, background: bg || color + "18", color }}>{children}</span>
+);
+
+const Card = ({ children, style, onClick }) => (
+  <div onClick={onClick} style={{ background: C.surface, borderRadius: 14, border: `1px solid ${C.border}`, padding: 16, cursor: onClick ? "pointer" : "default", boxShadow: "0 1px 4px rgba(0,0,0,0.06)", ...style }}>{children}</div>
+);
+
+const Modal = ({ title, children, onClose, width = 480 }) => (
+  <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+    <div style={{ background: C.surface, borderRadius: 16, width: "100%", maxWidth: width, maxHeight: "90vh", overflow: "auto", padding: 24 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+        <h3 style={{ fontSize: 18, fontWeight: 700 }}>{title}</h3>
+        <button onClick={onClose} style={{ border: "none", background: "none", fontSize: 20, cursor: "pointer", color: C.textMuted }}>✕</button>
+      </div>
+      {children}
+    </div>
+  </div>
+);
+
+const Toast = ({ msg, type = "success" }) => (
+  <div style={{
+    position: "fixed", bottom: 24, left: "50%", transform: "translateX(-50%)",
+    background: type === "success" ? C.success : type === "error" ? C.danger : C.warning,
+    color: "#fff", padding: "12px 24px", borderRadius: 10, fontWeight: 600, zIndex: 2000, fontSize: 14,
+    boxShadow: "0 4px 20px rgba(0,0,0,0.2)"
+  }}>{msg}</div>
+);
+
+// ─── APP ────────────────────────────────────────────────────────────────────────
+export default function App() {
+  const [screen, setScreen] = useState("login"); // login | customer | manager | monitor | dept
+  const [initialDept, setInitialDept] = useState(DEPARTMENTS[0]);
+  const [newOrderMode, setNewOrderMode] = useState(false); // true = skip to customer type select
+  const [user, setUser] = useState(null); // { type: 'private'|'business'|'manager', name, phone, customerId }
+  const [lang, setLang] = useState("he");
+  const [toast, setToast] = useState(null);
+
+  // Data
+  const [orders, setOrders] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [routes, setRoutes] = useState([]);
+
+  const showToast = (msg, type = "success") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 2800);
+  };
+
+  // Load all data
+  useEffect(() => {
+    (async () => {
+      const [o, c, p, cat, r] = await Promise.all([
+        load(KEYS.orders), load(KEYS.customers), load(KEYS.products),
+        load(KEYS.categories), load(KEYS.routes),
+      ]);
+      setOrders(o && o.length > 0 ? o : (await initDemoOrders()));
+      setCustomers(c || (await initCustomers()));
+      setProducts(p || (await initProducts()));
+      setCategories(cat || (await initCategories()));
+      setRoutes(r || (await initRoutes()));
+    })();
+  }, []);
+
+  async function initProducts() {
+    await save(KEYS.products, SEED_PRODUCTS);
+    return SEED_PRODUCTS;
+  }
+  async function initCategories() {
+    await save(KEYS.categories, SEED_CATEGORIES);
+    return SEED_CATEGORIES;
+  }
+  async function initRoutes() {
+    await save(KEYS.routes, SEED_ROUTES);
+    return SEED_ROUTES;
+  }
+  async function initCustomers() {
+    const seed = [{ id: "cust-demo", name: "לישי טויזר", phone: "0509934500", type: "private", routeId: "route-1", priceListId: null, createdAt: new Date().toISOString() }];
+    await save(KEYS.customers, seed);
+    return seed;
+  }
+  async function initDemoOrders() {
+    const demo = [{"id": "d-01", "customerId": null, "customerName": "דוד לוי", "customerPhone": "050-1111111", "customerType": "business", "deliveryDate": "2026-07-14", "deliveryTime": "07:00", "pickupType": "delivery", "routeId": "route-1", "note": "ארוך כחטיפים, לא לחתוך", "items": [{"productId": "p-1", "qty": 20, "note": ""}, {"productId": "p-2", "qty": 10, "note": ""}, {"productId": "p-4", "qty": 4, "note": ""}], "status": "confirmed", "deptStatus": {"בצקים": "in_progress", "הכנות": "pending", "אפייה": "pending", "אריזה": "pending", "שילוח": "pending"}, "paymentMethod": "cash", "createdAt": "2026-07-14T06:00:00.000Z", "editableUntil": "2026-07-14T07:00:00.000Z"}, {"id": "d-02", "customerId": null, "customerName": "מיכל כהן", "customerPhone": "052-2222222", "customerType": "business", "deliveryDate": "2026-07-14", "deliveryTime": "07:00", "pickupType": "delivery", "routeId": "route-1", "note": "", "items": [{"productId": "p-1", "qty": 15, "note": ""}, {"productId": "p-3", "qty": 8, "note": ""}, {"productId": "p-6", "qty": 3, "note": ""}], "status": "confirmed", "deptStatus": {"בצקים": "ready", "הכנות": "in_progress", "אפייה": "pending", "אריזה": "pending", "שילוח": "pending"}, "paymentMethod": "cash", "createdAt": "2026-07-14T06:00:00.000Z", "editableUntil": "2026-07-14T07:00:00.000Z"}, {"id": "d-03", "customerId": null, "customerName": "אבי גולן", "customerPhone": "054-3333333", "customerType": "business", "deliveryDate": "2026-07-14", "deliveryTime": "08:00", "pickupType": "delivery", "routeId": "route-1", "note": "משלוח לכניסה האחורית", "items": [{"productId": "p-2", "qty": 12, "note": "ללא סוכר על החלק העליון"}, {"productId": "p-5", "qty": 2, "note": ""}, {"productId": "p-10", "qty": 1, "note": ""}], "status": "confirmed", "deptStatus": {"בצקים": "ready", "הכנות": "ready", "אפייה": "in_progress", "אריזה": "pending", "שילוח": "pending"}, "paymentMethod": "cash", "createdAt": "2026-07-14T06:00:00.000Z", "editableUntil": "2026-07-14T07:00:00.000Z"}, {"id": "d-04", "customerId": null, "customerName": "פיצרייה הכרמל", "customerPhone": "058-4444444", "customerType": "business", "deliveryDate": "2026-07-14", "deliveryTime": "08:00", "pickupType": "delivery", "routeId": "route-1", "note": "", "items": [{"productId": "p-1", "qty": 50, "note": ""}, {"productId": "p-4", "qty": 6, "note": ""}], "status": "confirmed", "deptStatus": {"בצקים": "ready", "הכנות": "ready", "אפייה": "ready", "אריזה": "in_progress", "שילוח": "pending"}, "paymentMethod": "cash", "createdAt": "2026-07-14T06:00:00.000Z", "editableUntil": "2026-07-14T07:00:00.000Z"}, {"id": "d-05", "customerId": null, "customerName": "בית קפה גבעתיים", "customerPhone": "050-5555555", "customerType": "business", "deliveryDate": "2026-07-14", "deliveryTime": "09:00", "pickupType": "delivery", "routeId": "route-1", "note": "", "items": [{"productId": "p-6", "qty": 10, "note": ""}, {"productId": "p-7", "qty": 15, "note": ""}, {"productId": "p-2", "qty": 8, "note": ""}], "status": "confirmed", "deptStatus": {"בצקים": "ready", "הכנות": "ready", "אפייה": "ready", "אריזה": "ready", "שילוח": "ready"}, "paymentMethod": "cash", "createdAt": "2026-07-14T06:00:00.000Z", "editableUntil": "2026-07-14T07:00:00.000Z"}, {"id": "d-06", "customerId": null, "customerName": "מסעדת הגן", "customerPhone": "052-6666666", "customerType": "business", "deliveryDate": "2026-07-14", "deliveryTime": "09:00", "pickupType": "delivery", "routeId": "route-1", "note": "", "items": [{"productId": "p-4", "qty": 3, "note": ""}, {"productId": "p-5", "qty": 2, "note": ""}, {"productId": "p-9", "qty": 1, "note": ""}], "status": "confirmed", "deptStatus": {"בצקים": "ready", "הכנות": "ready", "אפייה": "ready", "אריזה": "in_progress", "שילוח": "pending"}, "paymentMethod": "delivery_note", "createdAt": "2026-07-14T06:00:00.000Z", "editableUntil": "2026-07-14T07:00:00.000Z"}, {"id": "d-07", "customerId": null, "customerName": "לישי טויזר", "customerPhone": "0509934500", "customerType": "private", "deliveryDate": "2026-07-14", "deliveryTime": "08:00", "pickupType": "pickup", "routeId": "route-1", "note": "", "items": [{"productId": "p-1", "qty": 5, "note": ""}, {"productId": "p-2", "qty": 2, "note": ""}, {"productId": "p-10", "qty": 1, "note": ""}], "status": "confirmed", "deptStatus": {"בצקים": "ready", "הכנות": "in_progress", "אפייה": "pending", "אריזה": "pending", "שילוח": "pending"}, "paymentMethod": "cash", "createdAt": "2026-07-14T06:00:00.000Z", "editableUntil": "2026-07-14T07:00:00.000Z"}, {"id": "d-08", "customerId": null, "customerName": "שרה אברהם", "customerPhone": "053-7777777", "customerType": "private", "deliveryDate": "2026-07-14", "deliveryTime": "10:00", "pickupType": "pickup", "routeId": null, "note": "", "items": [{"productId": "p-3", "qty": 4, "note": ""}, {"productId": "p-6", "qty": 2, "note": ""}], "status": "pending", "deptStatus": {"בצקים": "pending", "הכנות": "pending", "אפייה": "pending", "אריזה": "pending", "שילוח": "pending"}, "paymentMethod": "cash", "createdAt": "2026-07-14T06:00:00.000Z", "editableUntil": "2026-07-14T07:00:00.000Z"}, {"id": "d-09", "customerId": null, "customerName": "יוסי מזרחי", "customerPhone": "054-8888888", "customerType": "private", "deliveryDate": "2026-07-14", "deliveryTime": "11:00", "pickupType": "pickup", "routeId": null, "note": "אלרגי לאגוזים", "items": [{"productId": "p-4", "qty": 2, "note": ""}, {"productId": "p-8", "qty": 2, "note": ""}], "status": "pending", "deptStatus": {"בצקים": "pending", "הכנות": "pending", "אפייה": "pending", "אריזה": "pending", "שילוח": "pending"}, "paymentMethod": "cash", "createdAt": "2026-07-14T06:00:00.000Z", "editableUntil": "2026-07-14T07:00:00.000Z"}, {"id": "d-10", "customerId": null, "customerName": "רחל ברק", "customerPhone": "050-9999999", "customerType": "private", "deliveryDate": "2026-07-14", "deliveryTime": "12:00", "pickupType": "pickup", "routeId": null, "note": "", "items": [{"productId": "p-9", "qty": 2, "note": ""}, {"productId": "p-10", "qty": 1, "note": ""}], "status": "confirmed", "deptStatus": {"בצקים": "ready", "הכנות": "ready", "אפייה": "ready", "אריזה": "ready", "שילוח": "ready"}, "paymentMethod": "cash", "createdAt": "2026-07-14T06:00:00.000Z", "editableUntil": "2026-07-14T07:00:00.000Z"}, {"id": "d-11", "customerId": null, "customerName": "נדב שפירו", "customerPhone": "052-1010101", "customerType": "business", "deliveryDate": "2026-07-14", "deliveryTime": "13:00", "pickupType": "pickup", "routeId": "route-1", "note": "", "items": [{"productId": "p-1", "qty": 30, "note": ""}, {"productId": "p-2", "qty": 20, "note": ""}], "status": "confirmed", "deptStatus": {"בצקים": "ready", "הכנות": "ready", "אפייה": "in_progress", "אריזה": "pending", "שילוח": "pending"}, "paymentMethod": "cash", "createdAt": "2026-07-14T06:00:00.000Z", "editableUntil": "2026-07-14T07:00:00.000Z"}, {"id": "d-12", "customerId": null, "customerName": "חנות הטבע", "customerPhone": "058-1212121", "customerType": "business", "deliveryDate": "2026-07-14", "deliveryTime": "14:00", "pickupType": "delivery", "routeId": "route-1", "note": "מוצרים אורגניים בלבד", "items": [{"productId": "p-5", "qty": 4, "note": ""}, {"productId": "p-4", "qty": 3, "note": ""}, {"productId": "p-10", "qty": 2, "note": ""}], "status": "confirmed", "deptStatus": {"בצקים": "in_progress", "הכנות": "pending", "אפייה": "pending", "אריזה": "pending", "שילוח": "pending"}, "paymentMethod": "invoice", "createdAt": "2026-07-14T06:00:00.000Z", "editableUntil": "2026-07-14T07:00:00.000Z"}, {"id": "d-13", "customerId": null, "customerName": "קפה שלי", "customerPhone": "050-1313131", "customerType": "business", "deliveryDate": "2026-07-15", "deliveryTime": "07:00", "pickupType": "delivery", "routeId": "route-1", "note": "", "items": [{"productId": "p-6", "qty": 8, "note": ""}, {"productId": "p-2", "qty": 10, "note": ""}, {"productId": "p-1", "qty": 15, "note": ""}], "status": "confirmed", "deptStatus": {"בצקים": "pending", "הכנות": "pending", "אפייה": "pending", "אריזה": "pending", "שילוח": "pending"}, "paymentMethod": "cash", "createdAt": "2026-07-14T06:00:00.000Z", "editableUntil": "2026-07-14T07:00:00.000Z"}, {"id": "d-14", "customerId": null, "customerName": "אוניברסיטת הגליל", "customerPhone": "054-1414141", "customerType": "business", "deliveryDate": "2026-07-15", "deliveryTime": "08:00", "pickupType": "delivery", "routeId": "route-1", "note": "אירוע גדול – לתאם עם מאבטחים", "items": [{"productId": "p-1", "qty": 100, "note": ""}, {"productId": "p-2", "qty": 50, "note": ""}, {"productId": "p-3", "qty": 20, "note": ""}, {"productId": "p-4", "qty": 10, "note": ""}], "status": "confirmed", "deptStatus": {"בצקים": "pending", "הכנות": "pending", "אפייה": "pending", "אריזה": "pending", "שילוח": "pending"}, "paymentMethod": "cash", "createdAt": "2026-07-14T06:00:00.000Z", "editableUntil": "2026-07-14T07:00:00.000Z"}, {"id": "d-15", "customerId": null, "customerName": "גן ילדים סנונית", "customerPhone": "052-1515151", "customerType": "private", "deliveryDate": "2026-07-15", "deliveryTime": "07:30", "pickupType": "pickup", "routeId": null, "note": "", "items": [{"productId": "p-2", "qty": 25, "note": ""}, {"productId": "p-3", "qty": 15, "note": ""}], "status": "pending", "deptStatus": {"בצקים": "pending", "הכנות": "pending", "אפייה": "pending", "אריזה": "pending", "שילוח": "pending"}, "paymentMethod": "cash", "createdAt": "2026-07-14T06:00:00.000Z", "editableUntil": "2026-07-14T07:00:00.000Z"}, {"id": "d-16", "customerId": null, "customerName": "מלון גלים", "customerPhone": "058-1616161", "customerType": "business", "deliveryDate": "2026-07-15", "deliveryTime": "09:00", "pickupType": "delivery", "routeId": "route-1", "note": "", "items": [{"productId": "p-4", "qty": 8, "note": ""}, {"productId": "p-5", "qty": 6, "note": ""}, {"productId": "p-9", "qty": 3, "note": ""}, {"productId": "p-10", "qty": 4, "note": ""}], "status": "confirmed", "deptStatus": {"בצקים": "pending", "הכנות": "pending", "אפייה": "pending", "אריזה": "pending", "שילוח": "pending"}, "paymentMethod": "delivery_note", "createdAt": "2026-07-14T06:00:00.000Z", "editableUntil": "2026-07-14T07:00:00.000Z"}, {"id": "d-17", "customerId": null, "customerName": "פרטי – עמית", "customerPhone": "050-1717171", "customerType": "private", "deliveryDate": "2026-07-15", "deliveryTime": "10:00", "pickupType": "pickup", "routeId": null, "note": "", "items": [{"productId": "p-1", "qty": 3, "note": ""}, {"productId": "p-6", "qty": 1, "note": ""}, {"productId": "p-8", "qty": 2, "note": ""}], "status": "pending", "deptStatus": {"בצקים": "pending", "הכנות": "pending", "אפייה": "pending", "אריזה": "pending", "שילוח": "pending"}, "paymentMethod": "cash", "createdAt": "2026-07-14T06:00:00.000Z", "editableUntil": "2026-07-14T07:00:00.000Z"}, {"id": "d-18", "customerId": null, "customerName": "סופר כרמל", "customerPhone": "054-1818181", "customerType": "business", "deliveryDate": "2026-07-15", "deliveryTime": "11:00", "pickupType": "delivery", "routeId": "route-1", "note": "", "items": [{"productId": "p-1", "qty": 40, "note": ""}, {"productId": "p-2", "qty": 30, "note": ""}, {"productId": "p-4", "qty": 5, "note": ""}, {"productId": "p-5", "qty": 3, "note": ""}], "status": "confirmed", "deptStatus": {"בצקים": "in_progress", "הכנות": "pending", "אפייה": "pending", "אריזה": "pending", "שילוח": "pending"}, "paymentMethod": "cash", "createdAt": "2026-07-14T06:00:00.000Z", "editableUntil": "2026-07-14T07:00:00.000Z"}];
+    await save(KEYS.orders, demo);
+    return demo;
+  }
+
+  const saveOrders = async (o) => { setOrders(o); await save(KEYS.orders, o); };
+  const saveCustomers = async (c) => { setCustomers(c); await save(KEYS.customers, c); };
+  const saveProducts = async (p) => { setProducts(p); await save(KEYS.products, p); };
+  const saveCategories = async (c) => { setCategories(c); await save(KEYS.categories, c); };
+
+  const ctx = { orders, customers, products, categories, routes, user, lang,
+    saveOrders, saveCustomers, saveProducts, saveCategories,
+    setScreen, setUser, showToast, initialDept, setInitialDept, newOrderMode, setNewOrderMode };
+
+  return (
+    <>
+      <style>{GS}</style>
+      {toast && <Toast msg={toast.msg} type={toast.type} />}
+      {screen === "login" && <LoginScreen ctx={ctx} />}
+      {screen === "order" && <OrderScreen ctx={ctx} />}
+      {screen === "monitor" && <MonitorScreen ctx={ctx} />}
+      {screen === "manager" && <ManagerScreen ctx={ctx} />}
+      {screen === "dept" && <DeptScreen ctx={ctx} />}
+    </>
+  );
+}
+
+// ─── LOGIN SCREEN ───────────────────────────────────────────────────────────────
+function LoginScreen({ ctx }) {
+  // If newOrderMode: skip straight to customer type selection
+  const [mode, setMode] = useState(ctx.newOrderMode ? "select" : null);
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [pin, setPin] = useState("");
+  const [pinError, setPinError] = useState(false);
+  const [found, setFound] = useState(null);
+
+  const searchCustomer = (val) => {
+    if (val.length < 2) { setFound(null); return; }
+    const f = ctx.customers.find(c => c.name.includes(val) || c.phone.includes(val));
+    setFound(f || null);
+  };
+
+  const handleLogin = () => {
+    if (mode === "manager") {
+      if (pin === "2412") {
+        ctx.setUser({ type: "manager", name: "לישי טויזר" });
+        ctx.setScreen("manager");
+      } else setPinError(true);
+      return;
+    }
+    if (!name.trim() || !phone.trim()) return;
+    let customer = ctx.customers.find(c => c.phone === phone.trim());
+    if (!customer) {
+      customer = { id: uid(), name: name.trim(), phone: phone.trim(), type: mode, routeId: null, priceListId: null, createdAt: new Date().toISOString() };
+      ctx.saveCustomers([...ctx.customers, customer]);
+    }
+    ctx.setUser({ type: mode, name: customer.name, phone: customer.phone, customerId: customer.id });
+    ctx.setNewOrderMode(false);
+    ctx.setScreen("order");
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", background: "linear-gradient(160deg, #222222 0%, #3D3530 100%)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 20, position: "relative" }}>
+
+      {/* Manager button – top left corner */}
+      <button onClick={() => setMode("manager")} style={{
+        position: "absolute", top: 16, left: 16,
+        background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.25)",
+        borderRadius: 10, padding: "8px 14px", cursor: "pointer",
+        color: "#ffffffbb", fontSize: 13, fontWeight: 600, fontFamily: "Heebo, sans-serif",
+        display: "flex", alignItems: "center", gap: 6
+      }}>
+        🔑 כניסת מנהל
+      </button>
+
+      {/* Logo */}
+      <div style={{ textAlign: "center", marginBottom: 36 }}>
+        <img src={LOGO_SRC} alt="עדן הגליל" style={{ width: 220, height: "auto", margin:"0 auto 12px", display:"block", filter:"brightness(1.1)" }} />
+        <p style={{ color: "rgba(255,255,255,0.55)", fontSize: 12 }}>מערכת הזמנות</p>
+      </div>
+
+      {(!mode || mode === "select") ? (
+        <div style={{ width: "100%", maxWidth: 380 }}>
+          {ctx.newOrderMode && (
+            <div style={{ textAlign: "center", marginBottom: 16 }}>
+              <div style={{ color: "#F0D5B0", fontSize: 15, fontWeight: 700 }}>➕ הזמנה חדשה</div>
+              <div style={{ color: "#ffffff66", fontSize: 13 }}>בחר סוג לקוח</div>
+            </div>
+          )}
+          {/* Private + Business side by side */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
+            {[
+              { key: "private", icon: "👤", label: "לקוח פרטי", sub: "הזמנה אישית" },
+              { key: "business", icon: "🏪", label: "לקוח עסקי", sub: "הזמנה עסקית" },
+            ].map(({ key, icon, label, sub }) => (
+              <button key={key} onClick={() => setMode(key)} style={{
+                background: "rgba(255,255,255,0.12)", border: "1.5px solid rgba(255,255,255,0.22)",
+                borderRadius: 14, padding: "20px 12px", cursor: "pointer", textAlign: "center",
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 8
+              }}>
+                <span style={{ fontSize: 36 }}>{icon}</span>
+                <div style={{ color: "#fff", fontWeight: 700, fontSize: 15 }}>{label}</div>
+                <div style={{ color: "#ffffff77", fontSize: 12 }}>{sub}</div>
+              </button>
+            ))}
+          </div>
+
+          {/* Monitor – only when not in new order mode */}
+          {!ctx.newOrderMode && (
+            <button onClick={() => { ctx.setUser({ type: "manager", name: "מוניטור" }); ctx.setScreen("monitor"); }} style={{
+              width: "100%", background: "rgba(200,135,58,0.22)", border: "1.5px solid rgba(200,135,58,0.55)",
+              borderRadius: 14, padding: "16px 20px", cursor: "pointer",
+              display: "flex", alignItems: "center", gap: 14
+            }}>
+              <span style={{ fontSize: 30 }}>📡</span>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ color: "#F0D5B0", fontWeight: 700, fontSize: 16 }}>מוניטור הזמנות</div>
+                <div style={{ color: "#ffffff66", fontSize: 13 }}>צפייה וניהול כל ההזמנות</div>
+              </div>
+            </button>
+          )}
+
+          {/* Back button when in new order mode */}
+          {ctx.newOrderMode && (
+            <button onClick={() => { ctx.setNewOrderMode(false); ctx.setScreen("monitor"); }}
+              style={{ width: "100%", marginTop: 10, background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 12, padding: "10px 0", color: "#ffffffaa", fontSize: 14, cursor: "pointer", fontFamily: "Heebo, sans-serif" }}>
+              ← ביטול
+            </button>
+          )}
+        </div>
+      ) : (
+        <div style={{ background: C.surface, borderRadius: 16, padding: 28, width: "100%", maxWidth: 380 }}>
+          <button onClick={() => { setMode(null); setPin(""); setPinError(false); }} style={{ background: "none", border: "none", cursor: "pointer", color: C.textMuted, fontSize: 13, marginBottom: 16, display: "flex", alignItems: "center", gap: 4, fontFamily: "Heebo, sans-serif" }}>
+            ← חזרה
+          </button>
+
+          {mode === "manager" ? (
+            <>
+              <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 20 }}>כניסת מנהל</h2>
+              <Input label="קוד PIN" value={pin} onChange={v => { setPin(v); setPinError(false); }} type="password" placeholder="הכנס PIN" />
+              {pinError && <p style={{ color: C.danger, fontSize: 13, marginTop: -8, marginBottom: 12 }}>קוד שגוי</p>}
+              <Btn onClick={handleLogin} size="lg" style={{ width: "100%" }}>כניסה</Btn>
+            </>
+          ) : (
+            <>
+              <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 20 }}>
+                {mode === "private" ? "👤 לקוח פרטי" : "🏪 לקוח עסקי"}
+              </h2>
+              <Input label="שם מלא" value={name} onChange={v => { setName(v); searchCustomer(v); }} placeholder="ישראל ישראלי" required />
+              {found && (
+                <div onClick={() => { setName(found.name); setPhone(found.phone); }} style={{ background: C.successLight, border: `1px solid ${C.success}`, borderRadius: 8, padding: "10px 14px", marginTop: -8, marginBottom: 12, cursor: "pointer", fontSize: 13 }}>
+                  ✓ מצאנו אותך: <strong>{found.name}</strong> – {found.phone}. לחץ לאישור
+                </div>
+              )}
+              <Input label="טלפון" value={phone} onChange={setPhone} placeholder="050-0000000" type="tel" required />
+              <Btn onClick={handleLogin} size="lg" style={{ width: "100%" }} disabled={!name.trim() || !phone.trim()}>המשך להזמנה</Btn>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── ORDER SCREEN ───────────────────────────────────────────────────────────────
+function OrderScreen({ ctx }) {
+  const [step, setStep] = useState(1); // 1=date+pickup, 2=products, 3=confirm
+  const [deliveryDate, setDeliveryDate] = useState(tomorrow());
+  const [deliveryTime, setDeliveryTime] = useState("08:00");
+  const [pickupType, setPickupType] = useState("pickup"); // pickup | delivery
+  const [routeId, setRouteId] = useState("");
+  const [note, setNote] = useState("");
+  const [cart, setCart] = useState([]); // [{productId, qty, note}]
+  const [search, setSearch] = useState("");
+  const [selectedCat, setSelectedCat] = useState(null);
+  const [addingProduct, setAddingProduct] = useState(null);
+  const [itemQty, setItemQty] = useState(1);
+  const [itemNote, setItemNote] = useState("");
+  const [noteConfirmed, setNoteConfirmed] = useState(false);
+  const [showNoteConfirm, setShowNoteConfirm] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState("");
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [pendingNewOrder, setPendingNewOrder] = useState(false);
+
+  const customer = ctx.customers.find(c => c.id === ctx.user?.customerId);
+
+  // Auto-assign route for business customers
+  useEffect(() => {
+    if (ctx.user?.type === "business" && customer?.routeId) setRouteId(customer.routeId);
+  }, [customer]);
+
+  const activeCategories = ctx.categories.filter(c =>
+    ctx.products.some(p => p.categoryId === c.id && p.active)
+  ).sort((a, b) => a.order - b.order);
+
+  const filteredProducts = ctx.products.filter(p => {
+    if (!p.active) return false;
+    if (search) return p.name.includes(search) || p.nameHi?.includes(search);
+    return selectedCat ? p.categoryId === selectedCat : false;
+  });
+
+  const addToCart = () => {
+    if (!addingProduct) return;
+    const existing = cart.findIndex(c => c.productId === addingProduct.id);
+    if (existing >= 0) {
+      const newCart = [...cart];
+      newCart[existing] = { ...newCart[existing], qty: newCart[existing].qty + itemQty, note: itemNote || newCart[existing].note };
+      setCart(newCart);
+    } else {
+      setCart([...cart, { productId: addingProduct.id, qty: itemQty, note: itemNote }]);
+    }
+    setAddingProduct(null); setItemQty(1); setItemNote("");
+  };
+
+  const removeFromCart = (productId) => setCart(cart.filter(c => c.productId !== productId));
+
+  const submitOrder = async () => {
+    const order = {
+      id: uid(),
+      customerId: ctx.user?.customerId || null,
+      customerName: ctx.user?.name,
+      customerPhone: ctx.user?.phone,
+      customerType: ctx.user?.type,
+      deliveryDate,
+      deliveryTime,
+      pickupType,
+      paymentMethod,
+      routeId: pickupType === "delivery" ? routeId : (customer?.routeId || null),
+      note,
+      items: cart,
+      status: "pending",
+      deptStatus: Object.fromEntries(DEPARTMENTS.map(d => [d, "pending"])),
+      createdAt: new Date().toISOString(),
+      editableUntil: new Date(Date.now() + 30 * 60 * 1000).toISOString(), // 30 min
+    };
+    await ctx.saveOrders([...ctx.orders, order]);
+    ctx.showToast("ההזמנה נשלחה בהצלחה! 🎉");
+    ctx.setScreen("login");
+  };
+
+  const cartTotal = cart.reduce((sum, item) => {
+    const p = ctx.products.find(p => p.id === item.productId);
+    return sum + (p ? p.price * item.qty : 0);
+  }, 0);
+
+  return (
+    <div style={{ minHeight: "100vh", width: "100%", background: C.bg, display: "flex", flexDirection: "column" }}>
+      {/* Header */}
+      <div style={{ background: "#222222", padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div>
+          <div style={{ display:"flex", alignItems:"center", gap:8 }}><img src={LOGO_SRC} alt="" style={{ height:28, width:"auto" }} /><h2 style={{ color: C.gold, fontSize: 16, fontWeight: 800 }}>הזמנה חדשה</h2></div>
+          <p style={{ color: "#ffffff88", fontSize: 13 }}>שלום, {ctx.user?.name}</p>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          {cart.length > 0 && (
+            <div style={{ background: C.accent, borderRadius: 20, padding: "4px 12px", color: "#fff", fontSize: 13, fontWeight: 700 }}>
+              🛒 {cart.length} פריטים
+            </div>
+          )}
+          <button onClick={() => { if (cart.length > 0) setShowExitConfirm(true); else ctx.setScreen("login"); }} style={{ background: "none", border: "none", color: "#ffffff88", cursor: "pointer", fontSize: 22 }}>✕</button>
+        </div>
+      </div>
+
+      {/* Step indicator */}
+      <div style={{ display: "flex", background: C.surface, borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+        {[{ n: 1, label: "פרטים" }, { n: 2, label: "מוצרים" }, { n: 3, label: "אישור" }].map(s => (
+          <div key={s.n} style={{ flex: 1, padding: "12px 0", textAlign: "center", fontSize: 13, fontWeight: 600,
+            color: step === s.n ? "#B8965A" : C.textMuted, borderBottom: step === s.n ? `3px solid #B8965A` : "3px solid transparent" }}>
+            {s.n}. {s.label}
+          </div>
+        ))}
+      </div>
+
+      {/* STEP 2 – full height split panel */}
+      {step === 2 && (
+        <div style={{ display: "flex", flexDirection: "column", flex: 1, overflow: "hidden", width: "100%" }}>
+          {/* Search */}
+          <div style={{ padding: "10px 14px", background: C.surface, borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+            <div style={{ position: "relative" }}>
+              <span style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)" }}>🔍</span>
+              <input value={search} onChange={e => { setSearch(e.target.value); if (e.target.value) setSelectedCat(null); }}
+                placeholder="חיפוש מוצר..."
+                style={{ width: "100%", padding: "9px 36px 9px 32px", border: `1.5px solid ${C.border}`, borderRadius: 10, fontSize: 14, fontFamily: "Heebo, sans-serif", direction: "rtl" }} />
+              {search && <button onClick={() => setSearch("")} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", border: "none", background: "none", cursor: "pointer", color: C.textMuted, fontSize: 18 }}>✕</button>}
+            </div>
+          </div>
+
+          {/* Split: categories | products */}
+          <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+            {/* Categories column – selected is larger */}
+            <div style={{ width: 100, borderLeft: `1px solid ${C.border}`, overflowY: "auto", background: C.bg, flexShrink: 0 }}>
+              {activeCategories.map(cat => {
+                const isActive = selectedCat === cat.id;
+                return (
+                  <button key={cat.id} onClick={() => { setSelectedCat(cat.id); setSearch(""); }}
+                    style={{
+                      width: "100%",
+                      padding: isActive ? "16px 8px" : "11px 6px",
+                      border: "none",
+                      borderBottom: `1px solid ${C.border}`,
+                      borderRight: isActive ? `3px solid ${C.primary}` : "3px solid transparent",
+                      background: isActive ? C.primary+"15" : "transparent",
+                      color: isActive ? C.primary : C.textMuted,
+                      fontWeight: isActive ? 800 : 400,
+                      fontSize: isActive ? 14 : 12,
+                      cursor: "pointer", textAlign: "center",
+                      fontFamily: "Heebo, sans-serif", lineHeight: 1.3,
+                      transition: "all 0.15s"
+                    }}>
+                    {cat.name}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Products column – vertical scroll */}
+            <div style={{ flex: 1, overflowY: "auto", padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+              {!selectedCat && !search && (
+                <div style={{ textAlign: "center", padding: 40, color: C.textMuted }}>
+                  <div style={{ fontSize: 32, marginBottom: 10 }}>👈</div>
+                  <p style={{ fontSize: 14 }}>בחר קטגוריה<br/>או חפש מוצר</p>
+                </div>
+              )}
+              {(selectedCat || search) && filteredProducts.length === 0 && (
+                <p style={{ textAlign: "center", color: C.textMuted, padding: 24, fontSize: 14 }}>לא נמצאו מוצרים</p>
+              )}
+              {filteredProducts.map(p => {
+                const inCart = cart.find(c => c.productId === p.id);
+                return (
+                  <div key={p.id} style={{ background: C.surface, borderRadius: 10, border: `1.5px solid ${inCart ? C.primary : C.border}`, padding: "10px 12px", display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 14 }}>{p.name}</div>
+                      {p.nameHi && <div style={{ color: C.textMuted, fontSize: 11 }}>{p.nameHi}</div>}
+                      {p.saleActive && p.saleValue > 0 ? (
+                        <div style={{ marginTop: 3 }}>
+                          <span style={{ color: C.textMuted, fontSize: 11, textDecoration: "line-through" }}>₪{fmt(p.price)}</span>
+                          <span style={{ color: C.danger, fontWeight: 800, fontSize: 14, marginRight: 4 }}>
+                            ₪{p.saleType === "percent" ? (p.price * (1 - p.saleValue/100)).toFixed(2) : p.saleValue}
+                          </span>
+                          <span style={{ background: "#F59E0B", color: "#fff", borderRadius: 4, padding: "1px 6px", fontSize: 10, fontWeight: 700 }}>מבצע</span>
+                        </div>
+                      ) : (
+                        <div style={{ color: C.accent, fontWeight: 700, fontSize: 13, marginTop: 3 }}>₪{fmt(p.price)}</div>
+                      )}
+                    </div>
+                    {inCart ? (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                          <div style={{ background: C.primary, color: "#fff", borderRadius: 8, padding: "4px 12px", fontSize: 15, fontWeight: 800 }}>{inCart.qty} יח׳</div>
+                          <div style={{ fontSize: 11, color: C.accent, fontWeight: 700, marginTop: 2 }}>₪{fmt(inCart.qty * p.price)}</div>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                          <button onClick={() => { setAddingProduct(p); setItemQty(inCart.qty); setItemNote(inCart.note||""); }}
+                            style={{ border: `1px solid ${C.primary}`, background: "transparent", color: C.primary, borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 11, fontFamily: "Heebo, sans-serif", fontWeight: 700 }}>עדכן</button>
+                          <button onClick={() => removeFromCart(p.id)}
+                            style={{ border: "none", background: C.dangerLight, color: C.danger, borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 11, fontFamily: "Heebo, sans-serif" }}>הסר</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button onClick={() => { setAddingProduct(p); setItemQty(p.minQty || 1); setItemNote(""); }}
+                        style={{ background: C.primary, border: "none", borderRadius: 8, color: "#fff", padding: "8px 14px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "Heebo, sans-serif", flexShrink: 0 }}>
+                        + הוסף
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Fixed bottom bar */}
+          <div style={{ background: C.surface, borderTop: `1px solid ${C.border}`, padding: "12px 16px", flexShrink: 0, boxShadow: "0 -4px 16px rgba(0,0,0,0.07)" }}>
+            {cart.length > 0 ? (
+              <>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
+                  <span style={{ fontWeight: 700, fontSize: 14 }}>🛒 {cart.length} פריטים בסל</span>
+                  <span style={{ fontWeight: 800, color: C.accent, fontSize: 15 }}>₪{fmt(cartTotal)}</span>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <Btn variant="ghost" onClick={() => setStep(1)} style={{ flex: 1 }}>← חזרה</Btn>
+                  <Btn onClick={() => setStep(3)} style={{ flex: 2 }}>המשך לאישור →</Btn>
+                </div>
+              </>
+            ) : (
+              <div style={{ display: "flex", gap: 8 }}>
+                <Btn variant="ghost" onClick={() => setStep(1)} style={{ flex: 1 }}>← חזרה</Btn>
+                <div style={{ flex: 2, display: "flex", alignItems: "center", justifyContent: "center", color: C.textMuted, fontSize: 13 }}>בחר לפחות מוצר אחד</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div style={{ padding: 20, width: "100%", display: step === 2 ? "none" : "block" }}>
+
+        {/* STEP 1 – Date & pickup */}
+        {step === 1 && (
+          <div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <div style={{ flex: 2 }}>
+                <Input label="תאריך אספקה" value={deliveryDate} onChange={setDeliveryDate} type="date" required />
+              </div>
+              <div style={{ flex: 1 }}>
+                <Input label="שעה" value={deliveryTime} onChange={setDeliveryTime} type="time" required />
+              </div>
+            </div>
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: C.textMuted, marginBottom: 8 }}>אופן קבלה *</label>
+              <div style={{ display: "flex", gap: 10 }}>
+                {[{ v: "pickup", label: "🏪 איסוף עצמי" }, { v: "delivery", label: "🚚 שילוח" }].map(opt => (
+                  <button key={opt.v} onClick={() => setPickupType(opt.v)} style={{
+                    flex: 1, padding: "12px 0", border: `2px solid ${pickupType === opt.v ? C.primary : C.border}`,
+                    borderRadius: 10, background: pickupType === opt.v ? C.primary + "11" : C.surface,
+                    color: pickupType === opt.v ? C.primary : C.textMuted, fontWeight: 600, cursor: "pointer", fontSize: 14
+                  }}>{opt.label}</button>
+                ))}
+              </div>
+            </div>
+            {pickupType === "delivery" && (
+              <Select label="קו חלוקה" value={routeId} onChange={setRouteId}
+                options={[{ value: "", label: "בחר קו..." }, ...ctx.routes.map(r => ({ value: r.id, label: r.name + " – " + r.area }))]} />
+            )}
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: C.textMuted, marginBottom: 4 }}>הערה כללית להזמנה</label>
+              <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="הערות כלליות..."
+                style={{ width: "100%", padding: "10px 12px", border: `1.5px solid ${C.border}`, borderRadius: 8, fontSize: 14, minHeight: 80, resize: "vertical", fontFamily: "Heebo, sans-serif" }} />
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <Btn variant="ghost" onClick={() => { if (cart.length > 0) setShowExitConfirm(true); else ctx.setScreen("login"); }} style={{ flex: 1 }}>← חזרה</Btn>
+              <Btn onClick={() => setStep(2)} size="lg" style={{ flex: 2 }} disabled={!deliveryDate || (pickupType === "delivery" && !routeId)}>המשך →</Btn>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 2 – Products */}
+        {step === 2 && (
+          <div>
+            {/* Search */}
+            <div style={{ position: "relative", marginBottom: 16 }}>
+              <input value={search} onChange={e => { setSearch(e.target.value); setSelectedCat(null); }}
+                placeholder="🔍 חיפוש מוצר..."
+                style={{ width: "100%", padding: "10px 40px 10px 12px", border: `1.5px solid ${C.border}`, borderRadius: 10, fontSize: 14 }} />
+              {search && <button onClick={() => setSearch("")} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", border: "none", background: "none", cursor: "pointer", color: C.textMuted }}>✕</button>}
+            </div>
+
+            {/* Categories */}
+            {!search && (
+              <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 8, marginBottom: 16 }}>
+                {activeCategories.map(cat => (
+                  <button key={cat.id} onClick={() => setSelectedCat(selectedCat === cat.id ? null : cat.id)}
+                    style={{ flex: "none", padding: "8px 16px", borderRadius: 20, border: `1.5px solid ${selectedCat === cat.id ? C.primary : C.border}`,
+                      background: selectedCat === cat.id ? C.primary : C.surface,
+                      color: selectedCat === cat.id ? "#fff" : C.text, fontWeight: 600, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}>
+                    {cat.name}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Products list */}
+            {(search || selectedCat) && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {filteredProducts.length === 0 && <p style={{ textAlign: "center", color: C.textMuted, padding: 24 }}>לא נמצאו מוצרים</p>}
+                {filteredProducts.map(p => {
+                  const inCart = cart.find(c => c.productId === p.id);
+                  return (
+                    <Card key={p.id} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: 15 }}>{p.name}</div>
+                        <div style={{ color: C.textMuted, fontSize: 12 }}>{p.nameHi}</div>
+                        <div style={{ color: C.accent, fontWeight: 700, fontSize: 14, marginTop: 2 }}>₪{fmt(p.price)}</div>
+                      </div>
+                      {inCart ? (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <Badge color={C.primary}>{inCart.qty} יח'</Badge>
+                          <button onClick={() => removeFromCart(p.id)} style={{ border: "none", background: C.dangerLight, color: C.danger, borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 12 }}>הסר</button>
+                        </div>
+                      ) : (
+                        <Btn size="sm" onClick={() => { setAddingProduct(p); setItemQty(p.minQty || 1); setItemNote(""); }}>+ הוסף</Btn>
+                      )}
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+
+            {!search && !selectedCat && (
+              <div style={{ textAlign: "center", padding: 40, color: C.textMuted }}>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>👆</div>
+                <p>בחר קטגוריה או חפש מוצר</p>
+              </div>
+            )}
+
+            {/* Cart summary */}
+            {cart.length > 0 && (
+              <div style={{ position: "sticky", bottom: 0, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginTop: 16, boxShadow: "0 -4px 20px rgba(0,0,0,0.08)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <span style={{ fontWeight: 700 }}>סל הזמנה ({cart.length} פריטים)</span>
+                  <span style={{ fontWeight: 700, color: C.accent }}>₪{fmt(cartTotal)}</span>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <Btn variant="ghost" onClick={() => setStep(1)} style={{ flex: 1 }}>← חזרה</Btn>
+                  <Btn onClick={() => setStep(3)} style={{ flex: 2 }}>המשך לאישור →</Btn>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* STEP 3 – Confirm */}
+        {step === 3 && (
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+              <button onClick={() => setStep(2)} style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontFamily: "Heebo, sans-serif", fontSize: 14, color: C.textMuted }}>← חזרה</button>
+              <h3 style={{ fontSize: 16, fontWeight: 700 }}>סיכום הזמנה</h3>
+            </div>
+            <Card style={{ marginBottom: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12, fontSize: 14 }}>
+                <div><span style={{ color: C.textMuted }}>אספקה: </span><strong>{fmtDate(deliveryDate)} {deliveryTime}</strong></div>
+                <div><strong>{pickupType === "pickup" ? "🏪 איסוף" : "🚚 שילוח"}</strong></div>
+              </div>
+              {note && (
+                <div style={{ background: C.warningLight, borderRadius: 8, padding: "8px 12px", marginBottom: 10 }}>
+                  <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 2 }}>📝 הערה כללית</div>
+                  <div style={{ fontSize: 14 }}>{note}</div>
+                </div>
+              )}
+              <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
+                {cart.map(item => {
+                  const p = ctx.products.find(p => p.id === item.productId);
+                  return p ? (
+                    <div key={item.productId} style={{ marginBottom: 5 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ fontWeight: 600, fontSize: 14, flex: 1 }}>{p.name}</span>
+                        <span style={{ fontSize: 13, color: C.textMuted, margin: "0 8px" }}>×{item.qty}</span>
+                        <span style={{ fontWeight: 700, fontSize: 14, color: C.accent }}>₪{fmt(p.price * item.qty)}</span>
+                      </div>
+                      {item.note && <div style={{ fontSize: 12, color: C.warning, marginTop: 1, paddingRight: 4 }}>📝 {item.note}</div>}
+                    </div>
+                  ) : null;
+                })}
+                <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 8, marginTop: 6, display: "flex", justifyContent: "space-between", fontWeight: 700, fontSize: 16 }}>
+                  <span>סה"כ</span><span style={{ color: C.accent }}>₪{fmt(cartTotal)}</span>
+                </div>
+              </div>
+            </Card>
+
+            {/* אופן תשלום */}
+            <Card style={{ marginBottom: 14 }}>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>💳 אופן תשלום</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                {[
+                  ["cash","💵 מזומן"],
+                  ["credit","💳 אשראי"],
+                  ["transfer","🏦 העברה בנקאית"],
+                  ["delivery_note","📄 תעודת משלוח"],
+                  ["bit","💜 ביט"],
+                ].map(([val, label]) => (
+                  <button key={val} onClick={() => setPaymentMethod(val)}
+                    style={{ padding: "10px 8px", borderRadius: 10, border: `2px solid ${paymentMethod === val ? C.primary : C.border}`,
+                      background: paymentMethod === val ? C.primary + "11" : C.surface,
+                      color: paymentMethod === val ? C.primary : C.text,
+                      fontWeight: paymentMethod === val ? 700 : 400, fontSize: 13,
+                      cursor: "pointer", fontFamily: "Heebo, sans-serif", textAlign: "center" }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {!paymentMethod && (
+                <div style={{ color: C.danger, fontSize: 12, marginTop: 8 }}>* נדרש לבחור אופן תשלום</div>
+              )}
+            </Card>
+
+            <div style={{ position: "sticky", bottom: 0, background: C.surface, borderTop: `1px solid ${C.border}`, padding: "12px 0 4px", marginTop: 8, display: "flex", gap: 10 }}>
+              <Btn variant="ghost" onClick={() => setStep(2)} style={{ flex: 1 }}>← חזרה</Btn>
+              <Btn onClick={submitOrder} style={{ flex: 2 }} disabled={!paymentMethod}>
+                שלח הזמנה 🎉
+              </Btn>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Exit confirm modal */}
+      {showExitConfirm && (
+        <Modal title="יציאה מההזמנה" onClose={() => setShowExitConfirm(false)} width={320}>
+          <p style={{ fontSize: 15, marginBottom: 20, color: C.text }}>יש לך {cart.length} פריטים בסל. אם תצא עכשיו ההזמנה לא תישמר.</p>
+          <div style={{ display: "flex", gap: 10 }}>
+            <Btn variant="ghost" onClick={() => setShowExitConfirm(false)} style={{ flex: 1 }}>המשך הזמנה</Btn>
+            <Btn variant="danger" onClick={() => { setShowExitConfirm(false); ctx.setScreen("login"); }} style={{ flex: 1 }}>יציאה</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* New order from mid-flow confirm */}
+      {pendingNewOrder && (
+        <Modal title="הזמנה חדשה" onClose={() => setPendingNewOrder(false)} width={320}>
+          <p style={{ fontSize: 15, marginBottom: 20, color: C.text }}>יש לך הזמנה בתהליך עם {cart.length} פריטים. האם לבטל אותה ולפתוח הזמנה חדשה?</p>
+          <div style={{ display: "flex", gap: 10 }}>
+            <Btn variant="ghost" onClick={() => setPendingNewOrder(false)} style={{ flex: 1 }}>חזרה</Btn>
+            <Btn variant="danger" onClick={() => { setPendingNewOrder(false); setCart([]); setStep(1); setNote(""); setPaymentMethod(""); setDeliveryDate(tomorrow()); setDeliveryTime("08:00"); }} style={{ flex: 1 }}>הזמנה חדשה</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* Add product modal */}
+      {addingProduct && (
+        <Modal title={`הוסף: ${addingProduct.name}`} onClose={() => setAddingProduct(null)} width={340}>
+          {/* Price per unit + total */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: C.bg, borderRadius: 10, padding: "10px 14px", marginBottom: 16 }}>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 2 }}>מחיר ליחידה</div>
+              <div style={{ fontWeight: 700, fontSize: 16, color: C.textMuted }}>₪{addingProduct.price}</div>
+            </div>
+            <div style={{ fontSize: 20, color: C.border }}>×</div>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 2 }}>כמות</div>
+              <div style={{ fontWeight: 800, fontSize: 20, color: C.primary }}>{itemQty}</div>
+            </div>
+            <div style={{ fontSize: 20, color: C.border }}>=</div>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 2 }}>סה"כ</div>
+              <div style={{ fontWeight: 800, fontSize: 20, color: C.accent }}>₪{fmt(addingProduct.price * itemQty)}</div>
+            </div>
+          </div>
+
+          {/* Qty controls */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+            <button onClick={() => setItemQty(Math.max(addingProduct.minQty || 1, itemQty - 1))}
+              style={{ width: 56, height: 56, border: `2px solid ${C.border}`, borderRadius: 12, fontSize: 32, cursor: "pointer", background: C.surface, fontWeight: 700, flexShrink: 0, lineHeight: 1 }}>−</button>
+            <input
+              type="number"
+              value={itemQty}
+              onChange={e => {
+                const v = parseInt(e.target.value) || 1;
+                setItemQty(Math.min(addingProduct.maxQty || 9999, Math.max(addingProduct.minQty || 1, v)));
+              }}
+              style={{ width: 64, textAlign: "center", fontSize: 24, fontWeight: 800, border: `2px solid ${C.primary}`, borderRadius: 10, padding: "10px 0", fontFamily: "Heebo, sans-serif", color: C.text, background: C.surface }}
+            />
+            <button onClick={() => setItemQty(Math.min(addingProduct.maxQty || 9999, itemQty + 1))}
+              style={{ width: 56, height: 56, border: `2px solid ${C.border}`, borderRadius: 12, fontSize: 32, cursor: "pointer", background: C.surface, fontWeight: 700, flexShrink: 0, lineHeight: 1 }}>+</button>
+          </div>
+          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 14, textAlign: "center" }}>מינ׳: {addingProduct.minQty || 1} | מקס׳: {addingProduct.maxQty || "ללא"}</div>
+
+          {/* Note */}
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: C.textMuted, marginBottom: 4 }}>הערה למוצר זה (אופציונלי)</label>
+            <textarea value={itemNote} onChange={e => setItemNote(e.target.value)} placeholder="הערה ספציפית לפריט זה..."
+              style={{ width: "100%", padding: "8px 12px", border: `1.5px solid ${C.border}`, borderRadius: 8, fontSize: 14, minHeight: 52, resize: "none", fontFamily: "Heebo, sans-serif" }} />
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <Btn variant="ghost" onClick={() => setAddingProduct(null)} style={{ flex: 1 }}>ביטול</Btn>
+            <Btn onClick={addToCart} style={{ flex: 2 }}>הוסף לסל</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ─── MONITOR SCREEN ─────────────────────────────────────────────────────────────
+// ─── BON ITEMS LIST (with inline בהכנה/מוכן per item) ────────────────────────────
+// BonItemsList – display only, no actions
+function BonItemsList({ order, ctx, border }) {
+  return (
+    <div style={{ borderTop: `1px dashed ${border}44`, paddingTop: 8, flex: 1 }}>
+      {order.items?.map(item => {
+        const p = ctx.products.find(p => p.id === item.productId);
+        if (!p) return null;
+        return (
+          <div key={item.productId} style={{ marginBottom: 4 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+              <span style={{ fontWeight: 600, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.name}</span>
+              <span style={{ fontWeight: 700, color: "#555", fontSize: 12, flexShrink: 0 }}>×{item.qty}</span>
+            </div>
+            {item.note?.trim() && (
+              <div style={{ fontSize: 11, color: "#F59E0B", paddingRight: 2 }}>📌 {item.note}</div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── MONITOR PRODUCT SUMMARY ────────────────────────────────────────────────────
+function MonitorProductSummary({ ctx }) {
+  const [open, setOpen] = useState(false);
+  const [expandedProd, setExpandedProd] = useState(null);
+
+  // Sum all active orders
+  const summary = {};
+  ctx.orders.filter(o => ["confirmed","in_progress","ready"].includes(o.status)).forEach(order => {
+    (order.items||[]).forEach(item => {
+      const p = ctx.products.find(p => p.id === item.productId);
+      if (!p) return;
+      if (!summary[item.productId]) summary[item.productId] = { product: p, total: 0, entries: [] };
+      summary[item.productId].total += item.qty;
+      summary[item.productId].entries.push({ order, qty: item.qty, note: item.note });
+    });
+  });
+  const items = Object.values(summary).sort((a,b) => b.total - a.total);
+  if (items.length === 0) return null;
+
+  return (
+    <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, flexShrink: 0 }}>
+      <button onClick={() => setOpen(!open)}
+        style={{ width: "100%", padding: "9px 16px", background: "none", border: "none", cursor: "pointer", fontFamily: "Heebo, sans-serif", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontWeight: 700, fontSize: 14, color: open ? C.primary : C.text }}>📊 סיכום מוצרים לביצוע</span>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {items.slice(0,3).map(({product,total}) => (
+            <span key={product.id} style={{ background: C.primary+"18", color: C.primary, borderRadius: 6, padding: "2px 8px", fontSize: 12, fontWeight: 700 }}>
+              {product.name.split(" ")[0]}: {total}
+            </span>
+          ))}
+          <span style={{ color: C.textMuted, fontSize: 14 }}>{open ? "▲" : "▼"}</span>
+        </div>
+      </button>
+      {open && (
+        <div style={{ padding: "0 12px 12px" }}>
+          {items.map(({ product, total, entries }) => (
+            <div key={product.id} style={{ marginBottom: 8, borderRadius: 10, overflow: "hidden", border: `1px solid ${C.border}` }}>
+              <button onClick={() => setExpandedProd(expandedProd === product.id ? null : product.id)}
+                style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", background: C.bg, border: "none", cursor: "pointer", fontFamily: "Heebo, sans-serif" }}>
+                <span style={{ fontWeight: 700, fontSize: 14 }}>{product.name}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontWeight: 900, fontSize: 22, color: C.primary }}>{total}</span>
+                  <span style={{ fontSize: 11, color: C.textMuted }}>יח׳</span>
+                  <span style={{ color: C.textMuted }}>{expandedProd === product.id ? "▲" : "▼"}</span>
+                </div>
+              </button>
+              {expandedProd === product.id && (
+                <div style={{ background: C.surface }}>
+                  {entries.map((e, i) => (
+                    <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "8px 14px", borderTop: `1px solid ${C.border}` }}>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 13 }}>{e.order.customerName}</div>
+                        <div style={{ fontSize: 12, color: C.textMuted }}>{fmtDate(e.order.deliveryDate)} {e.order.deliveryTime||""}</div>
+                        {e.note && <div style={{ fontSize: 12, color: C.warning }}>📌 {e.note}</div>}
+                      </div>
+                      <span style={{ fontWeight: 800, fontSize: 16, color: C.primary }}>{e.qty}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── ROUTE SCREEN ────────────────────────────────────────────────────────────────
+function RouteScreen({ ctx, onClose }) {
+  const [selectedRoute, setSelectedRoute] = useState(null);
+  const [activeTab, setActiveTab] = useState("summary"); // summary | orders
+  const [expandedProduct, setExpandedProduct] = useState(null);
+  const [pickingOrder, setPickingOrder] = useState(null);
+  const [filterDate, setFilterDate] = useState('all'); // default: show all
+
+  // Orders on this route: either routeId matches, OR customer is assigned to this route
+  const routeOrders = selectedRoute
+    ? ctx.orders.filter(o => {
+        const customer = ctx.customers.find(c => c.id === o.customerId);
+        const onRoute = o.routeId === selectedRoute.id || customer?.routeId === selectedRoute.id;
+        const activeStatus = ["pending","confirmed","in_progress","ready","delivered"].includes(o.status);
+        const dateMatch = filterDate === "all" || o.deliveryDate === filterDate;
+        return onRoute && activeStatus && dateMatch;
+      }).sort((a,b) => new Date(a.deliveryDate+"T"+(a.deliveryTime||"00:00")) - new Date(b.deliveryDate+"T"+(b.deliveryTime||"00:00")))
+    : [];
+
+  // Product summary across route orders
+  const routeSummary = {};
+  routeOrders.forEach(order => {
+    (order.items||[]).forEach(item => {
+      const p = ctx.products.find(p => p.id === item.productId);
+      if (!p) return;
+      if (!routeSummary[item.productId]) routeSummary[item.productId] = { product: p, total: 0, customers: [] };
+      routeSummary[item.productId].total += item.qty;
+      routeSummary[item.productId].customers.push({ order, qty: item.qty, note: item.note });
+    });
+  });
+
+  // Picking state: {orderId: {productId: collected}}
+  const [collected, setCollected] = useState({});
+  const [completionModal, setCompletionModal] = useState(null); // order that just completed
+  const [docType, setDocType] = useState(null); // "invoice"|"delivery_note"|"none"
+  const toggleCollect = (orderId, productId) => {
+    setCollected(prev => {
+      const next = { ...prev, [orderId]: { ...(prev[orderId]||{}), [productId]: !prev[orderId]?.[productId] } };
+      // Check if ALL items of this order are now collected
+      const order = ctx.orders.find(o => o.id === orderId);
+      if (order && (order.items||[]).length > 0 && (order.items||[]).every(i => next[orderId]?.[i.productId])) {
+        // Trigger completion flow after state update
+        setTimeout(() => setCompletionModal(order), 50);
+      }
+      return next;
+    });
+  };
+
+  const completeOrderPickup = async (order, doc) => {
+    // Cascade: mark ALL departments as ready
+    const updated = ctx.orders.map(o => {
+      if (o.id !== order.id) return o;
+      const ds = {};
+      DEPARTMENTS.forEach(d => { ds[d] = "ready"; });
+      return { ...o, deptStatus: ds, status: "delivered", deliveryDoc: doc };
+    });
+    await ctx.saveOrders(updated);
+    setCompletionModal(null);
+    setDocType(null);
+    ctx.showToast("✅ הזמנה הושלמה – כל המחלקות עודכנו");
+  };
+  const isCollected = (orderId, productId) => !!collected[orderId]?.[productId];
+  const orderCollectedCount = (order) => (order.items||[]).filter(i => collected[order.id]?.[i.productId]).length;
+  const isOrderDone = (order) => (order.items||[]).length > 0 && (order.items||[]).every(i => collected[order.id]?.[i.productId]);
+
+  // Route list screen
+  if (!selectedRoute) {
+    return (
+      <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:600, display:"flex", flexDirection:"column" }}>
+        <div style={{ background:C.primary, padding:"14px 16px", display:"flex", alignItems:"center", gap:12 }}>
+          <button onClick={onClose} style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:8, padding:"6px 12px", color:"#fff", fontWeight:700, cursor:"pointer", fontFamily:"Heebo, sans-serif", fontSize:14 }}>← חזרה</button>
+          <h2 style={{ color:C.gold, fontWeight:800, fontSize:17 }}>🚚 קווי חלוקה</h2>
+        </div>
+        <div style={{ flex:1, overflowY:"auto", padding:16 }}>
+          {ctx.routes.map(route => {
+            const count = ctx.orders.filter(o => {
+              const cust = ctx.customers.find(c => c.id === o.customerId);
+              return (o.routeId === route.id || cust?.routeId === route.id) && ["confirmed","in_progress","ready"].includes(o.status);
+            }).length;
+            const todayCount = ctx.orders.filter(o => {
+              const cust = ctx.customers.find(c => c.id === o.customerId);
+              return (o.routeId === route.id || cust?.routeId === route.id) && o.deliveryDate === today() && ["confirmed","in_progress","ready"].includes(o.status);
+            }).length;
+            return (
+              <div key={route.id} onClick={() => setSelectedRoute(route)}
+                style={{ background:C.surface, border:`2px solid ${count>0?C.gold:C.border}`, borderRadius:14, padding:16, marginBottom:12, cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center", boxShadow:"0 2px 8px rgba(0,0,0,0.06)" }}>
+                <div>
+                  <div style={{ fontWeight:800, fontSize:16 }}>{route.name}</div>
+                  <div style={{ fontSize:13, color:C.textMuted, marginTop:2 }}>{route.area}</div>
+                  {todayCount > 0 && <div style={{ fontSize:12, color:C.gold, fontWeight:700, marginTop:3 }}>היום: {todayCount} הזמנות</div>}
+                </div>
+                <div style={{ textAlign:"center" }}>
+                  <div style={{ fontSize:26, fontWeight:900, color:count>0?C.gold:C.textMuted }}>{count}</div>
+                  <div style={{ fontSize:11, color:C.textMuted }}>סה"כ פעיל</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:C.bg, zIndex:600, display:"flex", flexDirection:"column" }}>
+      {/* Header */}
+      <div style={{ background:C.primary, padding:"12px 16px", flexShrink:0 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
+          <button onClick={() => setSelectedRoute(null)} style={{ background:"rgba(255,255,255,0.15)", border:"none", borderRadius:8, padding:"5px 10px", color:"#fff", fontWeight:700, cursor:"pointer", fontFamily:"Heebo, sans-serif", fontSize:13 }}>← קווים</button>
+          <h2 style={{ color:C.gold, fontWeight:800, fontSize:16 }}>🚚 {selectedRoute.name}</h2>
+          <div style={{ marginRight:"auto", background:C.gold, borderRadius:8, padding:"3px 10px", color:C.primary, fontWeight:800, fontSize:13 }}>{routeOrders.length} הזמנות</div>
+        </div>
+        {/* Date filter */}
+        <div style={{ display:"flex", gap:6, marginBottom:8 }}>
+          {[["היום", today()], ["מחר", (() => { const d=new Date(); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); })()], ["הכל","all"]].map(([label,val]) => (
+            <button key={val} onClick={() => setFilterDate(val)}
+              style={{ padding:"4px 12px", borderRadius:8, border:`1.5px solid ${filterDate===val?C.gold:"rgba(255,255,255,0.2)"}`, background:filterDate===val?C.gold:"transparent", color:filterDate===val?C.primary:"#fff", fontWeight:700, fontSize:12, cursor:"pointer", fontFamily:"Heebo, sans-serif" }}>
+              {label}
+            </button>
+          ))}
+        </div>
+        {/* Product chips */}
+        <div style={{ display:"flex", gap:5, overflowX:"auto" }}>
+          {Object.values(routeSummary).map(({product,total}) => (
+            <div key={product.id} style={{ flex:"none", background:"rgba(184,150,90,0.2)", border:"1px solid rgba(184,150,90,0.4)", borderRadius:8, padding:"3px 10px", color:C.gold, fontSize:12, fontWeight:700 }}>
+              {product.name.split(" ")[0]}: {total}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display:"flex", background:C.surface, borderBottom:`1px solid ${C.border}`, flexShrink:0 }}>
+        {[["summary","📊 סיכום מוצרים"],["orders","📋 לפי הזמנות"]].map(([v,l]) => (
+          <button key={v} onClick={() => setActiveTab(v)}
+            style={{ flex:1, padding:"11px 0", border:"none", background:"none", fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"Heebo, sans-serif", color:activeTab===v?C.gold:C.textMuted, borderBottom:activeTab===v?`3px solid ${C.gold}`:"3px solid transparent" }}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {/* ── SUMMARY TAB ── */}
+      {activeTab === "summary" && (
+        <div style={{ flex:1, overflowY:"auto", padding:12 }}>
+          {Object.values(routeSummary).length === 0 && (
+            <div style={{ textAlign:"center", padding:40, color:C.textMuted }}>
+              <div style={{ fontSize:32, marginBottom:8 }}>📭</div>
+              <p>אין הזמנות בקו זה{filterDate!=='all'?' ב'+filterDate:''}</p>
+            </div>
+          )}
+          {Object.values(routeSummary).map(({ product, total, customers }) => {
+            const isExp = expandedProduct === product.id;
+            // Count how many collected for this product
+            const collectedCount = customers.filter(c => isCollected(c.order.id, product.id)).length;
+            return (
+              <div key={product.id} style={{ marginBottom:10, borderRadius:12, overflow:"hidden", border:`1.5px solid ${collectedCount===customers.length && customers.length>0 ? C.success : C.border}`, background:C.surface }}>
+                {/* Product header */}
+                <button onClick={() => setExpandedProduct(isExp ? null : product.id)}
+                  style={{ width:"100%", display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 14px", background:collectedCount===customers.length&&customers.length>0?C.successLight:"transparent", border:"none", cursor:"pointer", fontFamily:"Heebo, sans-serif" }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                    <div style={{ textAlign:"right" }}>
+                      <div style={{ fontWeight:800, fontSize:15, color:C.text }}>{product.name}</div>
+                      <div style={{ fontSize:12, color:C.textMuted }}>{customers.length} לקוחות</div>
+                    </div>
+                  </div>
+                  <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                    {collectedCount > 0 && <span style={{ fontSize:12, color:C.success, fontWeight:700 }}>{collectedCount}/{customers.length} נאסף</span>}
+                    <span style={{ fontWeight:900, fontSize:26, color:collectedCount===customers.length&&customers.length>0?C.success:C.gold }}>{total}</span>
+                    <span style={{ color:C.textMuted }}>{isExp?"▲":"▼"}</span>
+                  </div>
+                </button>
+                {/* Customer breakdown */}
+                {isExp && (
+                  <div style={{ borderTop:`1px solid ${C.border}` }}>
+                    {customers.map((c, i) => {
+                      const done = isCollected(c.order.id, product.id);
+                      return (
+                        <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 14px", borderBottom:i<customers.length-1?`1px solid ${C.border}`:"none", background:done?C.successLight:"transparent", transition:"background 0.15s" }}>
+                          <div style={{ flex:1 }}>
+                            <div style={{ fontWeight:700, fontSize:14, textDecoration:done?"line-through":"none", color:done?C.success:C.text }}>{c.order.customerName}</div>
+                            <div style={{ fontSize:12, color:C.textMuted }}>{fmtDate(c.order.deliveryDate)} {c.order.deliveryTime||""}</div>
+                            {c.note && <div style={{ fontSize:12, color:C.warning }}>📌 {c.note}</div>}
+                          </div>
+                          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                            <span style={{ fontWeight:900, fontSize:18, color:done?C.success:C.gold }}>{c.qty}</span>
+                            <button onClick={() => toggleCollect(c.order.id, product.id)}
+                              style={{ background:done?C.success:C.surface, border:`2px solid ${done?C.success:C.border}`, borderRadius:8, padding:"6px 12px", fontWeight:800, fontSize:13, cursor:"pointer", fontFamily:"Heebo, sans-serif", color:done?"#fff":C.textMuted, transition:"all 0.15s" }}>
+                              {done ? "✅ נאסף" : "⬜ אסוף"}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── ORDERS TAB ── */}
+      {activeTab === "orders" && (
+        <div style={{ flex:1, overflowY:"auto", padding:12 }}>
+          {routeOrders.length === 0 && (
+            <div style={{ textAlign:"center", padding:40, color:C.textMuted }}>
+              <div style={{ fontSize:32, marginBottom:8 }}>📭</div>
+              <p>אין הזמנות</p>
+            </div>
+          )}
+          {routeOrders.map(order => {
+            const done = isOrderDone(order);
+            const cnt = orderCollectedCount(order);
+            const total = order.items?.length || 0;
+            return (
+              <div key={order.id} style={{ background:C.surface, borderRadius:14, border:`2px solid ${done?C.success:cnt>0?C.gold:C.border}`, padding:14, marginBottom:10 }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:8 }}>
+                  <div>
+                    <div style={{ fontWeight:800, fontSize:15 }}>{order.customerName}</div>
+                    <div style={{ fontSize:12, color:C.textMuted }}>{order.customerPhone}</div>
+                    <div style={{ fontSize:12, color:C.textMuted }}>{fmtDate(order.deliveryDate)} {order.deliveryTime||""}</div>
+                  </div>
+                  <div style={{ background:done?C.successLight:cnt>0?C.warningLight:C.bg, border:`1px solid ${done?C.success:cnt>0?C.warning:C.border}`, borderRadius:8, padding:"3px 10px", fontSize:12, fontWeight:700, color:done?C.success:cnt>0?C.warning:C.textMuted }}>
+                    {done?"✅ הושלם":cnt>0?`${cnt}/${total}`:"לא התחיל"}
+                  </div>
+                </div>
+                {/* Items with collect buttons */}
+                {(order.items||[]).map(item => {
+                  const p = ctx.products.find(p=>p.id===item.productId);
+                  const itemDone = isCollected(order.id, item.productId);
+                  return p ? (
+                    <div key={item.productId} onClick={() => toggleCollect(order.id, item.productId)}
+                      style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 10px", marginBottom:4, borderRadius:8, border:`1.5px solid ${itemDone?C.success:C.border}`, background:itemDone?C.successLight:C.bg, cursor:"pointer", transition:"all 0.15s" }}>
+                      <span style={{ fontWeight:600, fontSize:14, textDecoration:itemDone?"line-through":"none", color:itemDone?C.success:C.text }}>{p.name}</span>
+                      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                        <span style={{ fontWeight:800, fontSize:16, color:itemDone?C.success:C.gold }}>×{item.qty}</span>
+                        <span style={{ fontSize:18 }}>{itemDone?"✅":"⬜"}</span>
+                      </div>
+                    </div>
+                  ) : null;
+                })}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Completion modal – appears when order is fully collected */}
+      {completionModal && (
+        <Modal title="✅ הזמנה הושלמה!" onClose={() => { setCompletionModal(null); setDocType(null); }} width={360}>
+          <div style={{ textAlign:"center", marginBottom:20 }}>
+            <div style={{ fontSize:40, marginBottom:8 }}>🎉</div>
+            <div style={{ fontWeight:800, fontSize:16 }}>{completionModal.customerName}</div>
+            <div style={{ color:C.textMuted, fontSize:13 }}>{fmtDate(completionModal.deliveryDate)} {completionModal.deliveryTime||""}</div>
+          </div>
+          <p style={{ fontSize:14, fontWeight:600, marginBottom:14, textAlign:"center" }}>האם יצאה תעודה / חיוב?</p>
+          <div style={{ display:"flex", flexDirection:"column", gap:10, marginBottom:20 }}>
+            {[
+              ["invoice","🧾 חיוב / חשבונית"],
+              ["delivery_note","📄 תעודת משלוח"],
+              ["none","❌ לא יצאה תעודה"],
+            ].map(([v,l]) => (
+              <button key={v} onClick={() => setDocType(v)}
+                style={{ padding:"12px 16px", borderRadius:10, border:`2px solid ${docType===v?C.gold:C.border}`, background:docType===v?C.gold+"18":C.surface, fontWeight:700, fontSize:14, cursor:"pointer", fontFamily:"Heebo, sans-serif", color:docType===v?C.gold:C.text, transition:"all 0.15s" }}>
+                {l}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => docType && completeOrderPickup(completionModal, docType)}
+            disabled={!docType}
+            style={{ width:"100%", padding:"13px 0", borderRadius:10, border:"none", background:docType?C.gold:"#ccc", color:docType?C.primary:"#fff", fontWeight:800, fontSize:15, cursor:docType?"pointer":"not-allowed", fontFamily:"Heebo, sans-serif" }}>
+            {docType ? "✅ אשר וסגור הזמנה" : "בחר אפשרות תחילה"}
+          </button>
+          <p style={{ fontSize:12, color:C.textMuted, textAlign:"center", marginTop:10 }}>
+            * כל המחלקות יסומנו כמוכן אוטומטית
+          </p>
+        </Modal>
+      )}
+
+      {/* Picking modal */}
+      {pickingOrder && (
+        <Modal title={`ניקוט – ${pickingOrder.customerName}`} onClose={() => setPickingOrder(null)} width={480}>
+          {(pickingOrder.items||[]).map(item => {
+            const p = ctx.products.find(p=>p.id===item.productId);
+            const done = isCollected(pickingOrder.id, item.productId);
+            return p ? (
+              <div key={item.productId} onClick={() => toggleCollect(pickingOrder.id, item.productId)}
+                style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 14px", marginBottom:8, borderRadius:12, border:`2px solid ${done?C.success:C.border}`, background:done?C.successLight:C.surface, cursor:"pointer" }}>
+                <span style={{ fontWeight:700, fontSize:15, textDecoration:done?"line-through":"none" }}>{p.name}</span>
+                <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                  <span style={{ fontWeight:900, fontSize:18, color:done?C.success:C.gold }}>{item.qty}</span>
+                  <span style={{ fontSize:20 }}>{done?"✅":"⬜"}</span>
+                </div>
+              </div>
+            ) : null;
+          })}
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function MonitorScreen({ ctx }) {
+  const [filter, setFilter] = useState({ status: "all", date: "", search: "" });
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [activeDept, setActiveDept] = useState(null);
+  const [lastTap, setLastTap] = useState({});
+  const [showRoutes, setShowRoutes] = useState(false);
+
+  const filtered = ctx.orders
+    .filter(o => {
+      if (filter.status !== "all" && o.status !== filter.status) return false;
+      if (filter.date && o.deliveryDate !== filter.date) return false;
+      if (filter.search) {
+        const q = filter.search.toLowerCase();
+        if (!o.customerName?.includes(filter.search) && !o.customerPhone?.includes(filter.search)) return false;
+      }
+      if (activeDept) {
+        return o.items?.some(item => {
+          const p = ctx.products.find(p => p.id === item.productId);
+          return p?.departments?.includes(activeDept);
+        });
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      // ממתינות לאישור עולות ראשון
+      const aPending = a.status === "pending" ? 0 : 1;
+      const bPending = b.status === "pending" ? 0 : 1;
+      if (aPending !== bPending) return aPending - bPending;
+      // אחר כך לפי תאריך+שעה קרוב ביותר
+      const da = new Date(a.deliveryDate + "T" + (a.deliveryTime || "00:00"));
+      const db = new Date(b.deliveryDate + "T" + (b.deliveryTime || "00:00"));
+      return da - db;
+    });
+
+  const updateOrderStatus = async (orderId, status) => {
+    const updated = ctx.orders.map(o => o.id === orderId ? { ...o, status } : o);
+    await ctx.saveOrders(updated);
+    if (selectedOrder?.id === orderId) setSelectedOrder({ ...selectedOrder, status });
+    ctx.showToast("סטטוס עודכן");
+  };
+
+  // Double-tap to open
+  const handleTap = (order) => {
+    const now = Date.now();
+    const prev = lastTap[order.id] || 0;
+    if (now - prev < 400) {
+      // Double tap: toggle
+      setSelectedOrder(s => s?.id === order.id ? null : order);
+      setLastTap({});
+    } else {
+      // Single tap: open
+      setSelectedOrder(order);
+      setLastTap({ [order.id]: now });
+    }
+  };
+
+  const statusColor = (s) => ({
+    pending: C.warning, in_progress: C.primaryLight, ready: C.success, delivered: C.textMuted, cancelled: C.danger
+  }[s] || C.textMuted);
+
+  const statusBg = (s) => ({
+    pending: C.warningLight, in_progress: "#EEF7FF", ready: C.successLight, delivered: "#F5F5F5", cancelled: C.dangerLight
+  }[s] || C.bg);
+
+  return (
+    <div style={{ height: "100vh", background: C.bg, display: "flex", flexDirection: "column" }}>
+      {/* Header */}
+      <div style={{ background: "#222222", padding: "14px 16px", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:10 }}><img src={LOGO_SRC} alt="" style={{ height:32, width:"auto" }} /><h2 style={{ color: C.gold, fontSize: 17, fontWeight: 900 }}>מוניטור הזמנות</h2></div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => { ctx.setUser(null); ctx.setNewOrderMode(true); ctx.setScreen("login"); }}
+              style={{ background: "#B8965A", border: "none", borderRadius: 10, padding: "8px 14px", color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer", fontFamily: "Heebo, sans-serif", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 2px 8px rgba(184,150,90,0.4)" }}>
+              ➕ הזמנה חדשה
+            </button>
+            <button onClick={() => setShowRoutes(true)}
+              style={{ background: "rgba(255,255,255,0.15)", border: "1.5px solid rgba(255,255,255,0.4)", borderRadius: 10, padding: "8px 12px", color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer", fontFamily: "Heebo, sans-serif" }}>
+              🚚 קווים
+            </button>
+            <button onClick={() => ctx.setScreen("manager")}
+              style={{ background: "rgba(255,255,255,0.22)", border: "1.5px solid rgba(255,255,255,0.6)", borderRadius: 9, padding: "7px 14px", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "Heebo, sans-serif" }}>
+              ⚙️ ניהול
+            </button>
+            <button onClick={() => ctx.setScreen("login")}
+              style={{ background: "rgba(255,255,255,0.12)", border: "1.5px solid rgba(255,255,255,0.35)", borderRadius: 9, padding: "7px 14px", color: "#ffffffcc", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "Heebo, sans-serif" }}>
+              ← יציאה
+            </button>
+          </div>
+        </div>
+        {/* Dept filter tabs – tap to filter, long-press hint to go to dept */}
+        <div style={{ display: "flex", gap: 5, overflowX: "auto", paddingBottom: 2 }}>
+          <button onClick={() => setActiveDept(null)} style={{
+            flex: "none", padding: "6px 14px", borderRadius: 20, border: "none",
+            background: !activeDept ? C.accent : "rgba(255,255,255,0.15)",
+            color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer"
+          }}>📋 הכל</button>
+          {DEPARTMENTS.map(d => (
+            <button key={d}
+              onClick={() => { ctx.setInitialDept(d); ctx.setScreen("dept"); }}
+              style={{
+                flex: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
+                padding: "8px 14px", borderRadius: 14, border: "none",
+                background: activeDept === d ? C.dept[d] : "rgba(255,255,255,0.15)",
+                color: "#fff", cursor: "pointer", transition: "all 0.15s",
+                boxShadow: activeDept === d ? `0 2px 8px ${C.dept[d]}88` : "none",
+                minWidth: 60
+              }}>
+              <span style={{ fontSize: 24 }}>{DEPT_ICONS[d]}</span>
+              <span style={{ fontSize: 11, fontWeight: 700 }}>{d}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: "10px 12px", display: "flex", gap: 8, flexShrink: 0, overflowX: "auto" }}>
+        <input value={filter.search} onChange={e => setFilter({ ...filter, search: e.target.value })}
+          placeholder="🔍 חיפוש..."
+          style={{ flex: 1, minWidth: 100, padding: "7px 10px", border: `1.5px solid ${C.border}`, borderRadius: 8, fontSize: 13, fontFamily: "Heebo, sans-serif" }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 4, border: `1.5px solid ${C.border}`, borderRadius: 8, padding: "7px 10px", background: filter.date ? C.primary+"11" : C.surface }}>
+          <span style={{ fontSize: 13, color: C.textMuted, whiteSpace: "nowrap" }}>📅</span>
+          <input value={filter.date} onChange={e => setFilter({ ...filter, date: e.target.value })} type="date"
+            style={{ border: "none", outline: "none", fontSize: 13, background: "transparent", fontFamily: "Heebo, sans-serif" }} />
+          {filter.date && <button onClick={() => setFilter({...filter, date: ""})} style={{ border: "none", background: "none", cursor: "pointer", color: C.danger, fontSize: 14, padding: 0 }}>✕</button>}
+        </div>
+        <select value={filter.status} onChange={e => setFilter({ ...filter, status: e.target.value })}
+          style={{ padding: "7px 10px", border: `1.5px solid ${C.border}`, borderRadius: 8, fontSize: 13, fontFamily: "Heebo, sans-serif" }}>
+          <option value="all">כל הסטטוסים</option>
+          {Object.entries(STATUS_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+        </select>
+      </div>
+
+      {/* Stats bar */}
+      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: "8px 16px", display: "flex", gap: 20, flexShrink: 0 }}>
+        {[
+          { label: 'סה"כ', val: ctx.orders.length, color: C.primary },
+          { label: "ממתין", val: ctx.orders.filter(o => o.status === "pending").length, color: C.warning },
+          { label: "בביצוע", val: ctx.orders.filter(o => o.status === "in_progress").length, color: C.primaryLight },
+          { label: "מוכן", val: ctx.orders.filter(o => o.status === "ready").length, color: C.success },
+        ].map(s => (
+          <div key={s.label} style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: s.color }}>{s.val}</div>
+            <div style={{ fontSize: 11, color: C.textMuted }}>{s.label}</div>
+          </div>
+        ))}
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "flex-start" }}>
+          <span style={{ fontSize: 12, color: C.textMuted }}>לחץ על בון לפתיחה</span>
+        </div>
+      </div>
+
+      {/* Product summary in monitor */}
+      {/* Bons – grouped by day, horizontal scroll per day */}
+      {filtered.length === 0 ? (
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", color: C.textMuted }}>
+          <div style={{ fontSize: 48, marginBottom: 12 }}>📋</div>
+          <p>אין הזמנות</p>
+        </div>
+      ) : (
+        <div style={{ flex: 1, overflowY: "auto" }}>
+          {(() => {
+            // Group by delivery date
+            const groups = {};
+            filtered.forEach(order => {
+              const d = order.deliveryDate;
+              if (!groups[d]) groups[d] = [];
+              groups[d].push(order);
+            });
+            return Object.entries(groups).sort(([a],[b]) => a.localeCompare(b)).map(([date, orders]) => {
+              const dt = new Date(date);
+              const isToday = date === today();
+              const isTomorrow = date === (() => { const d=new Date(); d.setDate(d.getDate()+1); return d.toISOString().slice(0,10); })();
+              const dayLabel = isToday ? "היום" : isTomorrow ? "מחר" : dt.toLocaleDateString("he-IL", { weekday:"short", day:"numeric", month:"numeric" });
+              return (
+                <div key={date} style={{ marginBottom: 4 }}>
+                  {/* Day header */}
+                  <div style={{ padding: "8px 16px 4px", display: "flex", alignItems: "center", gap: 10, position: "sticky", top: 0, background: C.bg, zIndex: 5 }}>
+                    <div style={{ fontWeight: 800, fontSize: 14, color: isToday ? C.gold : C.primary }}>{dayLabel}</div>
+                    <div style={{ flex: 1, height: 1, background: C.border }} />
+                    <div style={{ fontSize: 12, color: C.textMuted }}>{orders.length} הזמנות</div>
+                  </div>
+                  {/* Horizontal scroll for this day */}
+                  <div style={{ overflowX: "auto", display: "flex", gap: 12, padding: "4px 16px 12px" }}>
+                    {orders.map(order => {
+                      const totalQty = order.items?.reduce((s, i) => s + i.qty, 0) || 0;
+                      const bg = statusBg(order.status);
+                      const border = statusColor(order.status);
+                      return (
+                        <div key={order.id}
+                          onClick={() => handleTap(order)}
+                          style={{
+                            flex: "none", width: 230, minHeight: 260,
+                            background: bg, border: `2px solid ${border}`,
+                            opacity: order.status === "pending" ? 0.75 : 1,
+                            borderRadius: 14, padding: 14, cursor: "pointer",
+                            userSelect: "none", transition: "transform 0.1s",
+                            boxShadow: lastTap[order.id] ? `0 0 0 3px ${border}44` : "0 2px 8px rgba(0,0,0,0.08)",
+                            transform: lastTap[order.id] ? "scale(0.97)" : "scale(1)",
+                            display: "flex", flexDirection: "column", gap: 8
+                          }}>
+                          {/* Bon header */}
+                          <div style={{ borderBottom: `1px dashed ${border}66`, paddingBottom: 8 }}>
+                            {order.status === "pending" && (
+                              <div style={{ background: C.warning, color: "#fff", borderRadius: 6, padding: "3px 10px", fontSize: 11, fontWeight: 800, marginBottom: 6, textAlign: "center" }}>
+                                ⚠️ ממתין לאישור קבלה
+                              </div>
+                            )}
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                              <div style={{ fontWeight: 800, fontSize: 14, lineHeight: 1.2 }}>{order.customerName}</div>
+                              <div style={{ background: border, color: "#fff", borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+                                {STATUS_LABELS[order.status]}
+                              </div>
+                            </div>
+                            <div style={{ fontSize: 12, color: C.textMuted, marginTop: 3 }}>{order.customerPhone}</div>
+                          </div>
+                          {/* Time + pickup */}
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                            <div>
+                              <div style={{ fontWeight: 700 }}>{order.deliveryTime || ""}</div>
+                            </div>
+                            <div>
+                              <div style={{ fontWeight: 700 }}>{order.pickupType === "delivery" ? "🚚" : "🏪"}</div>
+                              {order.customerType === "business" && <div style={{ color: C.gold, fontWeight: 600, fontSize: 10 }}>עסקי</div>}
+                            </div>
+                          </div>
+                          {/* Items */}
+                          <BonItemsList order={order} ctx={ctx} border={border} />
+                          {/* Notes + total */}
+                          <div style={{ borderTop: `1px dashed ${border}44`, paddingTop: 8, marginTop: "auto" }}>
+                            {order.note && <div style={{ fontSize: 11, color: C.warning, marginBottom: 3 }}>📝 {order.note.slice(0,35)}...</div>}
+                            {order.items?.some(i=>i.shortage) && <div style={{ fontSize: 11, color: C.danger, fontWeight: 700, marginBottom: 3 }}>⚠️ יש חוסרים</div>}
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                              <span style={{ color: C.textMuted }}>{totalQty} יח׳</span>
+                              <span style={{ fontWeight: 700, color: C.gold }}>₪{fmt(order.items?.reduce((s,i)=>{ const p=ctx.products.find(p=>p.id===i.productId); return s+(p?p.price*i.qty:0); },0)||0)}</span>
+                            </div>
+                          </div>
+                          {/* Dept progress */}
+                          <div style={{ display: "flex", gap: 3 }}>
+                            {DEPARTMENTS.filter(d=>d!=="שילוח").map(d => {
+                              const rel = order.items?.some(item => { const p=ctx.products.find(p=>p.id===item.productId); return p?.departments?.includes(d); });
+                              if (!rel) return null;
+                              const ds = order.deptStatus?.[d]||"pending";
+                              return <div key={d} title={d} style={{ flex:1, height:4, borderRadius:2, background:ds==="ready"?C.dept[d]:ds==="in_progress"?C.dept[d]+"66":"#ddd" }} />;
+                            })}
+                          </div>
+                          <div style={{ fontSize: 10, color: C.textMuted, textAlign: "center" }}>לחץ לפתיחה</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            });
+          })()}
+        </div>
+      )}
+
+      {selectedOrder && (
+        <OrderDetailModal
+          order={selectedOrder}
+          ctx={ctx}
+          onClose={() => setSelectedOrder(null)}
+          onStatusChange={updateOrderStatus}
+        />
+      )}
+      {showRoutes && (
+        <RouteScreen ctx={ctx} onClose={() => setShowRoutes(false)} />
+      )}
+    </div>
+  );
+}
+
+function OrderDetailModal({ order, ctx, onClose, onStatusChange }) {
+  const itemsWithNotes = (order.items||[]).filter(i=>i.note?.trim());
+  const [genConfirmed, setGenConfirmed] = useState(false);
+  const [itemConfirmed, setItemConfirmed] = useState({});
+  const [warn, setWarn] = useState(false);
+
+  const hasGenNote = !!(order.note?.trim());
+  const isConfirmed = ["confirmed","in_progress","ready","delivered"].includes(order.status);
+
+  // If already confirmed, skip ALL note confirmation requirements
+  const allConfirmed = isConfirmed || (
+    (!hasGenNote || genConfirmed) &&
+    itemsWithNotes.every(i => itemConfirmed[i.productId])
+  );
+  
+  // Auto-confirm notes for already-confirmed orders
+  const effectiveGenConfirmed = isConfirmed || genConfirmed;
+  const effectiveItemConfirmed = (pid) => isConfirmed || itemConfirmed[pid];
+
+  const total = (order.items||[]).reduce((s,i)=>{
+    const p=ctx.products.find(p=>p.id===i.productId);
+    return s+(p?p.price*i.qty:0);
+  },0);
+
+  const handleConfirm = () => {
+    if (!allConfirmed) { setWarn(true); setTimeout(()=>setWarn(false),3500); return; }
+    onStatusChange(order.id,"confirmed");
+  };
+
+  return (
+    <Modal title={`הזמנה – ${order.customerName}`} onClose={onClose} width={500}>
+      {warn && (
+        <div style={{background:C.dangerLight,border:`2px solid ${C.danger}`,borderRadius:10,padding:10,marginBottom:12,fontWeight:700,fontSize:14,color:C.danger,textAlign:"center"}}>
+          ⛔ יש לאשר את כל ההערות לפני אישור ההזמנה
+        </div>
+      )}
+
+      {/* מידע ראשי */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",background:C.bg,borderRadius:10,padding:"10px 14px",marginBottom:14}}>
+        <div>
+          <div style={{fontWeight:800,fontSize:16}}>{fmtDate(order.deliveryDate)} {order.deliveryTime||""}</div>
+          <div style={{fontSize:13,color:C.textMuted,marginTop:2}}>{order.pickupType==="delivery"?"🚚 שילוח":"🏪 איסוף"} · {order.customerType==="business"?"עסקי":"פרטי"}</div>
+          <div style={{fontSize:13,color:C.textMuted}}>{order.customerPhone}</div>
+        </div>
+        <div style={{textAlign:"left"}}>
+          <div style={{background:isConfirmed?C.successLight:C.warningLight,color:isConfirmed?C.success:C.warning,borderRadius:8,padding:"3px 10px",fontWeight:700,fontSize:12}}>
+            {STATUS_LABELS[order.status]||order.status}
+          </div>
+          <div style={{fontWeight:800,color:C.accent,fontSize:16,marginTop:5}}>₪{fmt(total)}</div>
+        </div>
+      </div>
+
+      {/* הערה כללית – אישור רק כשעדיין pending */}
+      {hasGenNote && (
+        <div style={{background:(!effectiveGenConfirmed)?"#FFF8E1":C.successLight, border:`2px solid ${(!effectiveGenConfirmed)?"#F59E0B":C.success}`,borderRadius:12,padding:14,marginBottom:14}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+            <span>📋</span>
+            <span style={{fontWeight:800,fontSize:14,color:(!effectiveGenConfirmed)?"#92400E":C.success}}>הערה כללית להזמנה</span>
+            {effectiveGenConfirmed&&<span>✅</span>}
+          </div>
+          <div style={{fontSize:15,fontWeight:600,marginBottom:(!effectiveGenConfirmed)?10:0}}>{order.note}</div>
+          {/* כפתור אישור רק כשהזמנה עוד לא אושרה */}
+          {!effectiveGenConfirmed && (
+            <button onClick={()=>setGenConfirmed(true)}
+              style={{background:"#F59E0B",border:"none",borderRadius:8,color:"#fff",padding:"8px 0",fontWeight:700,cursor:"pointer",fontFamily:"Heebo, sans-serif",fontSize:14,width:"100%"}}>
+              ✓ קראתי ומאשר
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* פריטים */}
+      <div style={{borderTop:`1px solid ${C.border}`,paddingTop:12,marginBottom:14}}>
+        {order.items?.map(item=>{
+          const p=ctx.products.find(p=>p.id===item.productId);
+          const noteConf=itemConfirmed[item.productId];
+          return p?(
+            <div key={item.productId} style={{marginBottom:8}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 10px",background:C.bg,borderRadius:item.note?.trim()?"8px 8px 0 0":8}}>
+                <span style={{fontWeight:600,fontSize:14}}>{p.name}</span>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <span style={{fontWeight:700}}>×{item.qty}</span>
+                  <span style={{color:C.accent,fontWeight:700}}>₪{p.price*item.qty}</span>
+                </div>
+              </div>
+              {/* הערת פריט – אישור רק כשעדיין pending */}
+              {item.note?.trim()&&(
+                <div style={{background:effectiveItemConfirmed(item.productId)?C.successLight:"#FFF3CD",border:`1.5px solid ${effectiveItemConfirmed(item.productId)?C.success:"#FFC107"}`,borderTop:"none",borderRadius:"0 0 8px 8px",padding:"7px 12px"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:11,fontWeight:700,color:"#92400E",marginBottom:1}}>📌 הערה לפריט</div>
+                      <div style={{fontSize:13}}>{item.note}</div>
+                    </div>
+                    {effectiveItemConfirmed(item.productId)
+                      ?<span style={{color:C.success,fontWeight:700,fontSize:13}}>✅</span>
+                      :<button onClick={()=>setItemConfirmed(p=>({...p,[item.productId]:true}))}
+                          style={{background:"#FFC107",border:"none",borderRadius:6,color:"#fff",padding:"5px 12px",fontWeight:700,cursor:"pointer",fontFamily:"Heebo, sans-serif",fontSize:12,whiteSpace:"nowrap"}}>✓ אישור</button>}
+                  </div>
+                </div>
+              )}
+            </div>
+          ):null;
+        })}
+      </div>
+
+      {/* מידע נוסף */}
+      <details style={{marginBottom:14}}>
+        <summary style={{cursor:"pointer",fontSize:13,color:C.textMuted,padding:"6px 0"}}>▼ מידע נוסף</summary>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:8}}>
+          {[["טלפון",order.customerPhone],["תשלום",order.paymentMethod||"לא הוגדר"],
+            ["נוצר",new Date(order.createdAt).toLocaleTimeString("he-IL",{hour:"2-digit",minute:"2-digit"})],
+            ["קו",order.routeId||"—"]].map(([k,v])=>(
+            <div key={k} style={{background:C.bg,borderRadius:8,padding:"7px 10px"}}>
+              <div style={{fontSize:11,color:C.textMuted}}>{k}</div>
+              <div style={{fontSize:13,fontWeight:600}}>{v}</div>
+            </div>
+          ))}
+        </div>
+      </details>
+
+      {/* כפתור אישור ראשי – רק כשממתין */}
+      {!isConfirmed?(
+        <div>
+          {!allConfirmed&&(
+            <div style={{background:"#FFF3CD",border:"2px solid #FFC107",borderRadius:10,padding:"9px 14px",marginBottom:10}}>
+              <div style={{fontWeight:800,fontSize:13,color:"#92400E",marginBottom:3}}>⚠️ יש לאשר את כל ההערות תחילה</div>
+              {hasGenNote&&!genConfirmed&&<div style={{fontSize:12,color:"#78350F"}}>• הערה כללית – טרם אושרה</div>}
+              {itemsWithNotes.filter(i=>!itemConfirmed[i.productId]).map(i=>{
+                const p=ctx.products.find(p=>p.id===i.productId);
+                return <div key={i.productId} style={{fontSize:12,color:"#78350F"}}>• הערה ל"{p?.name}" – טרם אושרה</div>;
+              })}
+            </div>
+          )}
+          <button onClick={handleConfirm}
+            style={{width:"100%",padding:"14px 0",background:allConfirmed?C.primary:"#9E9E9E",border:"none",borderRadius:10,color:"#fff",fontWeight:800,fontSize:16,cursor:"pointer",fontFamily:"Heebo, sans-serif",boxShadow:allConfirmed?"0 4px 12px rgba(44,95,46,0.3)":"none"}}>
+            {allConfirmed?"✅ אישור קבלת ההזמנה – התחל עבודה":"🔒 אשר הערות תחילה"}
+          </button>
+        </div>
+      ):(
+        <div>
+          <div style={{background:C.successLight,border:`1.5px solid ${C.success}`,borderRadius:10,padding:10,marginBottom:12,textAlign:"center",fontWeight:700,color:C.success,fontSize:14}}>
+            ✅ ההזמנה אושרה – הטיפול מתבצע במחלקות
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <Btn size="sm" variant="ghost" onClick={()=>onStatusChange(order.id,"delivered")}>נמסר ✓</Btn>
+            <Btn size="sm" variant="danger" onClick={()=>onStatusChange(order.id,"cancelled")}>בטל</Btn>
+          </div>
+        </div>
+      )}
+
+      {/* כפתור סגירה תחתון */}
+      <div style={{borderTop:`1px solid ${C.border}`,marginTop:16,paddingTop:12,textAlign:"center"}}>
+        <button onClick={onClose}
+          style={{background:"none",border:`1.5px solid ${C.border}`,borderRadius:10,padding:"9px 32px",color:C.textMuted,fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"Heebo, sans-serif"}}>
+          סגור ✕
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+// ─── PRODUCT SUMMARY ROW ─────────────────────────────────────────────────────────
+function ProductSummaryRow({ product, total, entries, deptColor, t }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div style={{ marginBottom: 8, borderRadius: 10, overflow: "hidden", border: `1px solid ${deptColor}33` }}>
+      <button onClick={() => setExpanded(!expanded)}
+        style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", background: deptColor+"0D", border: "none", cursor: "pointer", fontFamily: "Heebo, sans-serif" }}>
+        <span style={{ fontWeight: 800, fontSize: 15, color: C.text }}>{product.name}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontWeight: 900, fontSize: 22, color: deptColor }}>{total}</span>
+          <span style={{ fontSize: 11, color: C.textMuted }}>{t("יח׳","यू")}</span>
+          <span style={{ color: C.textMuted }}>{expanded ? "▲" : "▼"}</span>
+        </div>
+      </button>
+      {expanded && (
+        <div style={{ background: C.surface }}>
+          {entries.map((e, i) => (
+            <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", padding: "8px 14px", borderTop: `1px solid ${C.border}` }}>
+              <div>
+                <div style={{ fontWeight: 600, fontSize: 14 }}>{e.order.customerName}</div>
+                <div style={{ fontSize: 12, color: C.textMuted }}>{fmtDate(e.order.deliveryDate)} {e.order.deliveryTime||""}</div>
+                {e.note && <div style={{ fontSize: 12, color: C.warning, marginTop: 2 }}>📌 {e.note}</div>}
+              </div>
+              <span style={{ fontWeight: 800, fontSize: 16, color: deptColor }}>{e.qty}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DeptScreen({ ctx }) {
+  const [dept, setDept] = useState(ctx.initialDept || DEPARTMENTS[0]);
+  const [langMode, setLangMode] = useState("he");
+  const t = (he, hi) => langMode === "hi" ? hi : he;
+  const deptColor = C.dept[dept] || C.primary;
+
+  const [showSummary, setShowSummary] = useState(false);
+  const [summaryScreen, setSummaryScreen] = useState(false);
+
+  // Product summary for this dept across all active orders
+  const productSummary = {};
+  ctx.orders.filter(o => ["confirmed","in_progress","ready"].includes(o.status)).forEach(order => {
+    (order.items||[]).forEach(item => {
+      const p = ctx.products.find(p => p.id === item.productId);
+      if (!p?.departments?.includes(dept)) return;
+      if (!productSummary[item.productId]) productSummary[item.productId] = { product: p, total: 0, entries: [] };
+      productSummary[item.productId].total += item.qty;
+      productSummary[item.productId].entries.push({ order, qty: item.qty, note: item.note });
+    });
+  });
+
+  // ALL orders that have items for this dept (including pending – shown as waiting)
+  const allDeptOrders = ctx.orders.filter(o =>
+    o.status !== "cancelled" && o.status !== "delivered" &&
+    o.items?.some(item => {
+      const p = ctx.products.find(p => p.id === item.productId);
+      return p?.departments?.includes(dept);
+    })
+  ).sort((a, b) => {
+    // pending first, then by date
+    const ap = a.status === "pending" ? 0 : 1;
+    const bp = b.status === "pending" ? 0 : 1;
+    if (ap !== bp) return ap - bp;
+    return new Date(a.deliveryDate + "T" + (a.deliveryTime||"00:00")) - new Date(b.deliveryDate + "T" + (b.deliveryTime||"00:00"));
+  });
+
+  return (
+    <div style={{ height: "100vh", background: C.bg, display: "flex", flexDirection: "column" }}>
+      {/* Top bar */}
+      <div style={{ background: deptColor, padding: "10px 16px 8px", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:8 }}><img src={LOGO_SRC} alt="" style={{ height:26, width:"auto" }} /><h2 style={{ color: C.gold, fontSize: 16, fontWeight: 800 }}>{DEPT_ICONS[dept]} {t(`מחלקת ${dept}`, DEPT_HI[dept])}</h2></div>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button onClick={() => setLangMode(langMode === "he" ? "hi" : "he")}
+              style={{ background: "rgba(255,255,255,0.2)", border: "none", borderRadius: 8, padding: "4px 10px", color: "#fff", cursor: "pointer", fontSize: 13 }}>
+              {langMode === "he" ? "हिं" : "עב"}
+            </button>
+            <button onClick={() => { ctx.setUser(null); ctx.setNewOrderMode(true); ctx.setScreen("login"); }}
+              style={{ background: C.accent, border: "none", borderRadius: 10, padding: "8px 14px", color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer", fontFamily: "Heebo, sans-serif", display: "flex", alignItems: "center", gap: 5, boxShadow: "0 2px 8px rgba(200,135,58,0.4)" }}>
+              ➕ {t("הזמנה חדשה","नया ऑर्डर")}
+            </button>
+            <button onClick={() => ctx.setScreen("monitor")}
+              style={{ background: "rgba(255,255,255,0.2)", border: "1.5px solid rgba(255,255,255,0.5)", borderRadius: 10, padding: "7px 14px", color: "#fff", fontWeight: 800, fontSize: 13, cursor: "pointer", fontFamily: "Heebo, sans-serif", display: "flex", alignItems: "center", gap: 5 }}>
+              <span style={{fontSize:18}}>📡</span> {t("מוניטור","मॉनिटर")}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Summary button – opens full screen */}
+      <div style={{ background: C.surface, borderBottom: `1px solid ${C.border}`, padding: "8px 14px", flexShrink: 0 }}>
+        <button onClick={() => setSummaryScreen(true)}
+          style={{ width: "100%", padding: "10px 16px", background: deptColor+"15", border: `1.5px solid ${deptColor}44`, borderRadius: 10, cursor: "pointer", fontFamily: "Heebo, sans-serif", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ fontWeight: 700, fontSize: 14, color: deptColor }}>📊 {t("סיכום מוצרים","उत्पाद सारांश")}</span>
+          <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+            {Object.values(productSummary).slice(0,3).map(({product,total}) => (
+              <span key={product.id} style={{ background: deptColor+"22", color: deptColor, borderRadius: 6, padding: "2px 8px", fontSize: 12, fontWeight: 700 }}>
+                {product.name.split(" ")[0]}: {total}
+              </span>
+            ))}
+            <span style={{ color: deptColor, fontWeight: 800, fontSize: 16 }}>→</span>
+          </div>
+        </button>
+      </div>
+
+      {/* Summary full screen overlay */}
+      {summaryScreen && (
+        <div style={{ position: "fixed", inset: 0, background: C.bg, zIndex: 500, display: "flex", flexDirection: "column" }}>
+          <div style={{ background: deptColor, padding: "14px 16px", display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+            <button onClick={() => setSummaryScreen(false)}
+              style={{ background: "rgba(255,255,255,0.2)", border: "none", borderRadius: 8, padding: "6px 14px", color: "#fff", fontWeight: 700, cursor: "pointer", fontFamily: "Heebo, sans-serif", fontSize: 14 }}>← {t("חזרה","वापस")}</button>
+            <h2 style={{ color: "#fff", fontWeight: 800, fontSize: 16 }}>{DEPT_ICONS[dept]} {t(`סיכום מחלקת ${dept}`, `${DEPT_HI[dept]} सारांश`)}</h2>
+          </div>
+          <div style={{ flex: 1, overflowY: "auto", padding: 14 }}>
+            {Object.values(productSummary).length === 0 ? (
+              <div style={{ textAlign: "center", padding: 48, color: C.textMuted }}>
+                <div style={{ fontSize: 36, marginBottom: 10 }}>📋</div>
+                <p>{t("אין מוצרים פעילים","कोई उत्पाद नहीं")}</p>
+              </div>
+            ) : (
+              Object.values(productSummary).map(({ product, total, entries }) => (
+                <ProductSummaryRow key={product.id} product={product} total={total} entries={entries} deptColor={deptColor} t={t} />
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+
+      {/* Sticky dept tabs */}
+      <div style={{ background: deptColor, borderBottom: "3px solid rgba(0,0,0,0.15)", flexShrink: 0 }}>
+        <div style={{ display: "flex", overflowX: "auto", padding: "0 8px" }}>
+          {DEPARTMENTS.map(d => (
+            <button key={d} onClick={() => setDept(d)} style={{
+              flex: "none", padding: "8px 14px", border: "none",
+              background: "transparent",
+              borderBottom: dept === d ? "3px solid #fff" : "3px solid transparent",
+              color: dept === d ? "#fff" : "rgba(255,255,255,0.55)",
+              fontWeight: dept === d ? 800 : 600, fontSize: 13,
+              cursor: "pointer", fontFamily: "Heebo, sans-serif",
+              display: "flex", flexDirection: "column", alignItems: "center", gap: 2
+            }}>
+              <span style={{ fontSize: 20 }}>{DEPT_ICONS[d]}</span>
+              <span>{langMode === "hi" ? DEPT_HI[d] : d}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Orders – horizontal scroll like monitor bons */}
+      {allDeptOrders.length === 0 ? (
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", color: C.textMuted }}>
+          <div style={{ fontSize: 36, marginBottom: 10 }}>✅</div>
+          <p style={{ fontWeight: 600 }}>{t("אין הזמנות","कोई ऑर्डर नहीं")}</p>
+        </div>
+      ) : (
+        <div style={{ flex: 1, overflowX: "auto", overflowY: "hidden", display: "flex", gap: 14, padding: "14px 14px", alignItems: "flex-start", scrollSnapType: "x mandatory" }}>
+          {allDeptOrders.map(order => (
+            <DeptOrderCard key={order.id + dept}
+              order={order} dept={dept} deptColor={deptColor}
+              t={t} ctx={ctx}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── DEPT ORDER CARD ──────────────────────────────────────────────────────────────
+function DeptOrderCard({ order, dept, deptColor, t, ctx }) {
+  const isPending = order.status === "pending";
+  const requiresGenNote = ["אריזה","שילוח"].includes(dept);
+
+  const allItems = (order.items||[]).map(item => {
+    const p = ctx.products.find(p => p.id === item.productId);
+    return { ...item, _name: p?.name||"?", _depts: p?.departments||[], isMine: (p?.departments||[]).includes(dept) };
+  });
+  const myItems = allItems.filter(i => i.isMine);
+  const otherItems = allItems.filter(i => !i.isMine);
+
+  // State at top level – no hooks in loops
+  const [itemSt, setItemSt] = useState(
+    () => Object.fromEntries(myItems.map(i => [i.productId, "pending"]))
+  );
+  const [itemNoteConf, setItemNoteConf] = useState({});
+  const [genNoteConf, setGenNoteConf] = useState(false);
+  const [showFinish, setShowFinish] = useState(false);
+  // Partial qty: {productId: actualQty} – when less than ordered
+  const [partialQty, setPartialQty] = useState({});
+  const [showPartial, setShowPartial] = useState(null); // productId being edited
+
+  const deptDone = (order.deptStatus?.[dept]||"pending") === "ready";
+  const allMyDone = myItems.length > 0 && myItems.every(i => (itemSt[i.productId]||"pending") === "ready");
+  const canFinish = allMyDone && (!requiresGenNote || !order.note?.trim() || genNoteConf);
+
+  const setSt = (pid, st) => {
+    setItemSt(prev => ({...prev, [pid]: st}));
+    // When marking ready: auto-cascade earlier depts for this product
+    if (st === "ready") {
+      const myIdx = DEPT_ORDER[dept];
+      const item = allItems.find(i => i.productId === pid);
+      const prevDepts = (item?._depts || []).filter(d => DEPT_ORDER[d] < myIdx);
+      if (prevDepts.length > 0) {
+        // Auto-mark earlier depts as done for this order
+        const updated = ctx.orders.map(o => {
+          if (o.id !== order.id) return o;
+          let ds = {...(o.deptStatus||{})};
+          prevDepts.forEach(d => { ds[d] = "ready"; });
+          return {...o, deptStatus: ds};
+        });
+        ctx.saveOrders(updated);
+        if (prevDepts.length > 0) {
+          ctx.showToast(t(`✓ אושר גם ב: ${prevDepts.join(", ")}`, `✓ ${prevDepts.join(", ")} में भी स्वीकृत`));
+        }
+      }
+    }
+  };
+  const confItemNote = (pid) => setItemNoteConf(prev => ({...prev, [pid]: true}));
+
+  const handleFinish = () => {
+    const myIdx = DEPT_ORDER[dept];
+    const updated = ctx.orders.map(o => {
+      if (o.id !== order.id) return o;
+      let ds = {...o.deptStatus, [dept]: "ready"};
+      DEPARTMENTS.forEach(d => {
+        if (DEPT_ORDER[d] < myIdx) {
+          const has = o.items?.some(i => {
+            const p = ctx.products.find(p => p.id === i.productId);
+            return p?.departments?.includes(d);
+          });
+          if (has) ds[d] = "ready";
+        }
+      });
+      return {...o, deptStatus: ds};
+    });
+    ctx.saveOrders(updated);
+    ctx.showToast(t("✓ מחלקה סיימה","✓ पूर्ण"));
+    setShowFinish(false);
+  };
+
+  return (
+    <Card style={{ padding: 0, overflow: "hidden", flex: "none", width: "min(320px, calc(100vw - 28px))",
+      border: `2px solid ${isPending ? C.border : deptDone ? C.success : deptColor+"44"}`,
+      opacity: isPending ? 0.75 : 1
+    }}>
+
+      {/* Header */}
+      <div style={{ background: isPending ? C.bg : deptDone ? C.successLight : deptColor+"10", borderBottom: `1.5px solid ${isPending ? C.border : deptDone ? C.success : deptColor+"22"}`, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <div style={{ fontWeight: 800, fontSize: 15 }}>{order.customerName}</div>
+          <div style={{ fontSize: 12, color: C.textMuted }}>{fmtDate(order.deliveryDate)} {order.deliveryTime||""} · {order.pickupType==="delivery"?"🚚":"🏪"}</div>
+        </div>
+        <div style={{
+          background: isPending ? C.warningLight : deptDone ? C.success : allMyDone ? C.warning : "transparent",
+          color: isPending ? C.warning : deptDone||allMyDone ? "#fff" : C.textMuted,
+          border: isPending||deptDone||allMyDone ? "none" : `1px solid ${C.border}`,
+          borderRadius: 8, padding: "3px 12px", fontSize: 12, fontWeight: 700
+        }}>
+          {isPending ? t("⏳ ממתין לאישור מוניטור","⏳ प्रतीक्षारत") : deptDone ? "✓ סיים" : allMyDone ? "להסיים?" : t("בעבודה","काम")}
+        </div>
+      </div>
+
+      <div style={{ padding: "10px 14px" }}>
+
+        {/* הזמנה ממתינה – לא ניתן לפעול, מציג מוצרים בלבד */}
+        {isPending && (
+          <div>
+            <div style={{ background: "#FFFBEB", border: `1px solid #F59E0B`, borderRadius: 8, padding: "10px 14px", marginBottom: 10, textAlign: "center" }}>
+              <div style={{ fontWeight: 700, color: C.warning, fontSize: 14 }}>⏳ {t("ממתין לאישור במוניטור","मॉनिटर में प्रतीक्षारत")}</div>
+              <div style={{ fontSize: 12, color: C.textMuted, marginTop: 3 }}>{t("לא ניתן לטפל עד לאישור","स्वीकृति तक कार्रवाई नहीं")}</div>
+            </div>
+            {/* Show items read-only */}
+            {allItems.map(item => (
+              <div key={item.productId} style={{ display: "flex", justifyContent: "space-between", padding: "6px 8px", marginBottom: 4, background: C.bg, borderRadius: 6, opacity: item.isMine ? 0.8 : 0.35 }}>
+                <span style={{ fontSize: 13, fontWeight: item.isMine ? 600 : 400, color: item.isMine ? C.text : C.textMuted }}>{item._name}</span>
+                <span style={{ fontSize: 13, color: C.textMuted }}>×{item.qty}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* הזמנה מאושרת – עבודה */}
+        {!isPending && (
+          <>
+            {/* הערה כללית – גלויה לכולם, אישור רק לאריזה/שילוח */}
+            {order.note?.trim() && (
+              <div style={{ marginBottom: 10, background: (requiresGenNote ? genNoteConf : true) ? "#F0FFF4" : "#FFF8E1", border: `1.5px solid ${(requiresGenNote ? genNoteConf : true) ? C.success+"66" : "#F59E0B"}`, borderRadius: 8, padding: "8px 12px" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#92400E", marginBottom: 3 }}>📋 {t("הערה כללית להזמנה","सामान्य नोट")}</div>
+                <div style={{ fontSize: 13, marginBottom: requiresGenNote && !genNoteConf ? 8 : 0 }}>{order.note}</div>
+                {requiresGenNote && !genNoteConf && (
+                  <button onClick={() => setGenNoteConf(true)} style={{ background: "#F59E0B", border: "none", borderRadius: 6, color: "#fff", padding: "5px 0", fontWeight: 700, cursor: "pointer", fontFamily: "Heebo, sans-serif", fontSize: 12, width: "100%" }}>
+                    ✓ {t("קראתי ומאשר","पुष्टि")}
+                  </button>
+                )}
+                {requiresGenNote && genNoteConf && <span style={{ color: C.success, fontWeight: 700, fontSize: 12 }}>✅ {t("אושר","पुष्टि")}</span>}
+              </div>
+            )}
+
+            {/* MY ITEMS – active */}
+            {myItems.map(item => {
+              const st = itemSt[item.productId]||"pending";
+              const noteNeeded = !!(item.note?.trim() && !itemNoteConf[item.productId]);
+              const isDone = deptDone || st === "ready";
+              return (
+                <div key={item.productId} style={{ marginBottom: 8 }}>
+                  <div style={{
+                    display: "flex", alignItems: "center", gap: 6, padding: "9px 10px",
+                    background: isDone ? C.successLight : st==="in_progress" ? C.warningLight : deptColor+"08",
+                    border: `1px solid ${isDone ? C.success+"44" : st==="in_progress" ? C.warning+"55" : deptColor+"22"}`,
+                    borderRadius: item.note?.trim() ? "8px 8px 0 0" : 8,
+                    opacity: isDone ? 0.65 : 1,
+                    transition: "all 0.2s"
+                  }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ fontWeight: isDone ? 400 : 800, fontSize: 15, color: isDone ? C.textMuted : C.text }}>{item._name}</span>
+                      <span style={{ fontWeight: 700, fontSize: 14, color: deptColor, marginRight: 6 }}> {item.qty}</span>
+                    </div>
+                    {!deptDone && (
+                      <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
+                        <button
+                          onClick={() => { if (!noteNeeded && st === "pending") setSt(item.productId, "in_progress"); }}
+                          style={{
+                            padding: "5px 11px", borderRadius: 7, fontFamily: "Heebo, sans-serif", fontSize: 12, fontWeight: 700,
+                            cursor: (!noteNeeded && st==="pending") ? "pointer" : "default",
+                            border: `1.5px solid ${st==="in_progress" ? C.warning : noteNeeded ? "#e0e0e0" : C.warning+"66"}`,
+                            background: st==="in_progress" ? C.warning : "transparent",
+                            color: st==="in_progress" ? "#fff" : noteNeeded ? "#ccc" : C.warning,
+                            minWidth: 58, textAlign: "center", transition: "all 0.15s"
+                          }}>
+                          {st==="in_progress" ? "▶ בהכנה" : "בהכנה"}
+                        </button>
+                        <button
+                          onClick={() => { if (st==="in_progress") setSt(item.productId, "ready"); }}
+                          style={{
+                            padding: "5px 11px", borderRadius: 7, fontFamily: "Heebo, sans-serif", fontSize: 12, fontWeight: 700,
+                            cursor: st==="in_progress" ? "pointer" : "default",
+                            border: `1.5px solid ${st==="ready" ? C.success : st==="in_progress" ? C.success : "#e0e0e0"}`,
+                            background: st==="ready" ? C.success : "transparent",
+                            color: st==="ready" ? "#fff" : st==="in_progress" ? C.success : "#ccc",
+                            minWidth: 52, textAlign: "center", transition: "all 0.15s"
+                          }}>
+                          {st==="ready" ? "✓ מוכן" : "מוכן"}
+                        </button>
+                        {/* Partial qty button – only in_progress */}
+                        {st === "in_progress" && (
+                          <button
+                            onClick={() => setShowPartial(item.productId)}
+                            style={{ padding: "5px 8px", borderRadius: 7, fontFamily: "Heebo, sans-serif", fontSize: 11, fontWeight: 700, cursor: "pointer", border: `1.5px solid ${C.warning}`, background: partialQty[item.productId] !== undefined ? C.warningLight : "transparent", color: C.warning }}
+                            title="דיווח כמות חלקית">
+                            {partialQty[item.productId] !== undefined ? `⚠️ ${partialQty[item.productId]}` : "⚠️"}
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    {deptDone && <span style={{ color: C.success }}>✅</span>}
+                  </div>
+
+                  {/* הערת פריט – חוסמת בהכנה, צריך לאשר */}
+                  {item.note?.trim() && (
+                    <div style={{ background: itemNoteConf[item.productId] ? C.successLight : "#FFF3CD", border: `1px solid ${itemNoteConf[item.productId] ? C.success+"66" : "#FFC107"}`, borderTop: "none", borderRadius: "0 0 8px 8px", padding: "6px 12px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                        <div style={{ flex: 1 }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: "#92400E" }}>📌 </span>
+                          <span style={{ fontSize: 13 }}>{item.note}</span>
+                        </div>
+                        {itemNoteConf[item.productId]
+                          ? <span style={{ color: C.success, fontWeight: 700, fontSize: 12, flexShrink: 0 }}>✅</span>
+                          : <button onClick={() => confItemNote(item.productId)} style={{ background: "#FFC107", border: "none", borderRadius: 6, color: "#fff", padding: "4px 10px", fontWeight: 700, cursor: "pointer", fontFamily: "Heebo, sans-serif", fontSize: 11, flexShrink: 0 }}>✓ אשר</button>}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* OTHER ITEMS – display only, very dimmed */}
+            {otherItems.length > 0 && (
+              <div style={{ borderTop: `1px dashed ${C.border}`, paddingTop: 5, marginTop: 4 }}>
+                <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 3 }}>{t("שאר הפריטים","अन्य")}</div>
+                {otherItems.map(item => (
+                  <div key={item.productId} style={{ display: "flex", justifyContent: "space-between", padding: "2px 4px", fontSize: 12, opacity: 0.3, color: C.textMuted }}>
+                    <span>{item._name}</span><span>{item.qty}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* כפתור סיום מחלקה */}
+            {!deptDone && allMyDone && (
+              <div style={{ marginTop: 12 }}>
+                {requiresGenNote && order.note?.trim() && !genNoteConf && (
+                  <div style={{ background: C.warningLight, borderRadius: 6, padding: "5px 10px", marginBottom: 8, fontSize: 12, color: C.warning, fontWeight: 600 }}>
+                    ⚠️ {t("יש לאשר הערה כללית לפני סיום","समाप्त करने से पहले नोट की पुष्टि करें")}
+                  </div>
+                )}
+                <button onClick={() => canFinish && setShowFinish(true)}
+                  style={{ width: "100%", padding: "12px 0", border: "none", borderRadius: 10, background: canFinish ? C.success : "#bbb", color: "#fff", fontWeight: 800, fontSize: 15, cursor: canFinish ? "pointer" : "not-allowed", fontFamily: "Heebo, sans-serif", boxShadow: canFinish ? "0 4px 12px rgba(39,174,96,0.25)" : "none" }}>
+                  ✅ {t(`סיימתי – מחלקת ${dept}`, `${DEPT_HI[dept]} पूर्ण`)}
+                </button>
+              </div>
+            )}
+
+            {deptDone && (
+              <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ color: C.success, fontWeight: 700, fontSize: 13 }}>✅ {dept} סיימה</span>
+                <button onClick={() => { const updated = ctx.orders.map(o => o.id===order.id ? {...o, deptStatus: {...o.deptStatus, [dept]:"in_progress"}} : o); ctx.saveOrders(updated); }}
+                  style={{ background: "none", border: `1px solid ${C.border}`, borderRadius: 6, padding: "3px 10px", fontSize: 12, cursor: "pointer", color: C.textMuted, fontFamily: "Heebo, sans-serif" }}>↩ תקן</button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Partial qty modal */}
+      {showPartial && (() => {
+        const item = myItems.find(i => i.productId === showPartial);
+        if (!item) return null;
+        const current = partialQty[showPartial] ?? item.qty;
+        return (
+          <Modal title={`⚠️ חוסר – ${item._name}`} onClose={() => setShowPartial(null)} width={320}>
+            <p style={{ fontSize: 14, color: C.textMuted, marginBottom: 16 }}>
+              הוזמן: <strong>{item.qty} יח׳</strong>. כמה הכנת בפועל?
+            </p>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+              <button onClick={() => setPartialQty(p => ({...p, [showPartial]: Math.max(0, (p[showPartial]??item.qty)-1)}))}
+                style={{ width: 44, height: 44, borderRadius: 10, border: `1.5px solid ${C.border}`, background: C.surface, fontSize: 22, cursor: "pointer" }}>−</button>
+              <input type="number" value={partialQty[showPartial]??item.qty}
+                onChange={e => setPartialQty(p => ({...p, [showPartial]: Math.max(0, Math.min(item.qty, parseInt(e.target.value)||0))}))}
+                style={{ flex: 1, textAlign: "center", fontSize: 24, fontWeight: 800, border: `2px solid ${C.warning}`, borderRadius: 10, padding: "8px 0", fontFamily: "Heebo, sans-serif" }} />
+              <button onClick={() => setPartialQty(p => ({...p, [showPartial]: Math.min(item.qty, (p[showPartial]??item.qty)+1)}))}
+                style={{ width: 44, height: 44, borderRadius: 10, border: `1.5px solid ${C.border}`, background: C.surface, fontSize: 22, cursor: "pointer" }}>+</button>
+            </div>
+            {(partialQty[showPartial]??item.qty) < item.qty && (
+              <div style={{ background: C.warningLight, border: `1.5px solid ${C.warning}`, borderRadius: 8, padding: "8px 12px", marginBottom: 14, fontSize: 13, color: "#92400E" }}>
+                ⚠️ חוסר של <strong>{item.qty - (partialQty[showPartial]??item.qty)} יח׳</strong> – יועבר כהתראה למוניטור
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 10 }}>
+              <Btn variant="ghost" onClick={() => { setPartialQty(p => { const n={...p}; delete n[showPartial]; return n; }); setShowPartial(null); }} style={{ flex: 1 }}>ביטול</Btn>
+              <Btn onClick={() => setShowPartial(null)} style={{ flex: 1 }}>✓ אישור</Btn>
+            </div>
+          </Modal>
+        );
+      })()}
+
+      {showFinish && (
+        <Modal title={t("אישור סיום","समाप्ति")} onClose={() => setShowFinish(false)} width={300}>
+          <p style={{ fontSize: 15, marginBottom: 20 }}>{t(`לאשר שמחלקת ${dept} סיימה – ${order.customerName}?`, `${DEPT_HI[dept]} पूर्ण?`)}</p>
+          <div style={{ display: "flex", gap: 10 }}>
+            <Btn variant="ghost" onClick={() => setShowFinish(false)} style={{ flex: 1 }}>{t("ביטול","रद्द")}</Btn>
+            <Btn onClick={handleFinish} style={{ flex: 1, background: C.success }}>{t("✅ אישור","✅ पुष्टि")}</Btn>
+          </div>
+        </Modal>
+      )}
+    </Card>
+  );
+}
+
+// ─── MANAGER SCREEN ─────────────────────────────────────────────────────────────
+function ManagerScreen({ ctx }) {
+  const [tab, setTab] = useState("dashboard"); // dashboard | products | categories | customers | orders
+
+  const todayStr = today();
+  const todayOrders = ctx.orders.filter(o => o.deliveryDate === todayStr);
+  const pendingOrders = ctx.orders.filter(o => o.status === "pending");
+  const readyOrders = ctx.orders.filter(o => o.status === "ready");
+
+  return (
+    <div style={{ minHeight: "100vh", background: C.bg }}>
+      {/* Header */}
+      <div style={{ background: "#222222", padding: "16px 20px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <h2 style={{ color: "#fff", fontSize: 18, fontWeight: 800 }}>ניהול מערכת</h2>
+            <p style={{ color: "#ffffff88", fontSize: 13 }}>שלום, {ctx.user?.name}</p>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Btn size="sm" variant="ghost" onClick={() => ctx.setScreen("monitor")} style={{ color: "#fff", borderColor: "#ffffff44" }}>מוניטור</Btn>
+            <button onClick={() => { ctx.setUser(null); ctx.setNewOrderMode(true); ctx.setScreen("login"); }}
+              style={{ background: C.accent, border: "none", borderRadius: 10, padding: "8px 16px", color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer", fontFamily: "Heebo, sans-serif", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 2px 8px rgba(200,135,58,0.4)" }}>
+              ➕ הזמנה חדשה
+            </button>
+            <Btn size="sm" variant="ghost" onClick={() => ctx.setScreen("login")} style={{ color: "#fff", borderColor: "#ffffff44" }}>יציאה</Btn>
+          </div>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display: "flex", background: C.surface, borderBottom: `1px solid ${C.border}`, overflowX: "auto" }}>
+        {[["dashboard","📊 דשבורד"],["orders","📋 הזמנות"],["products","🥖 מוצרים"],["categories","🗂️ קטגוריות"],["customers","👥 לקוחות"]].map(([v,l]) => (
+          <button key={v} onClick={() => setTab(v)} style={{
+            flex: "none", padding: "12px 16px", border: "none", background: "none",
+            fontWeight: 600, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap",
+            color: tab === v ? C.primary : C.textMuted,
+            borderBottom: tab === v ? `3px solid ${C.primary}` : "3px solid transparent"
+          }}>{l}</button>
+        ))}
+      </div>
+
+      <div style={{ padding: 20 }}>
+        {tab === "dashboard" && (
+          <div>
+            {/* KPIs */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 24 }}>
+              {[
+                { label: "הזמנות היום", val: todayOrders.length, color: C.primary, icon: "📅" },
+                { label: "ממתינות", val: pendingOrders.length, color: C.warning, icon: "⏳" },
+                { label: "מוכנות", val: readyOrders.length, color: C.success, icon: "✅" },
+              ].map(k => (
+                <Card key={k.label} style={{ textAlign: "center" }}>
+                  <div style={{ fontSize: 24 }}>{k.icon}</div>
+                  <div style={{ fontSize: 28, fontWeight: 800, color: k.color }}>{k.val}</div>
+                  <div style={{ fontSize: 12, color: C.textMuted }}>{k.label}</div>
+                </Card>
+              ))}
+            </div>
+
+            {/* Quick links */}
+            {/* Dev: clear storage */}
+            <button onClick={async () => {
+              if (!window.confirm("למחוק את כל ההזמנות?")) return;
+              await window.storage.set("eden-orders-v1", JSON.stringify([]), true);
+              ctx.saveOrders([]);
+              ctx.showToast("הזמנות נמחקו");
+            }} style={{ background: C.dangerLight, border: `1px solid ${C.danger}`, borderRadius: 8, padding: "6px 14px", cursor: "pointer", fontSize: 12, color: C.danger, fontFamily: "Heebo, sans-serif", marginBottom: 14 }}>
+              🗑️ נקה הזמנות (לצורך בדיקה)
+            </button>
+
+            <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 12 }}>גישה מהירה</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              {[
+                { label: "מוניטור הזמנות", icon: "📡", screen: "monitor", dept: null },
+                { label: "הזמנה חדשה", icon: "➕", screen: "order", dept: null },
+                ...DEPARTMENTS.map(d => ({ label: `מחלקת ${d}`, icon: DEPT_ICONS[d], screen: "dept", dept: d })),
+              ].map(q => (
+                <button key={q.label} onClick={() => { if (q.dept) ctx.setInitialDept(q.dept); ctx.setScreen(q.screen); }} style={{
+                  background: q.dept ? (C.dept[q.dept]+"15"||C.surface) : C.surface,
+                  border: `1px solid ${q.dept ? (C.dept[q.dept]+"44"||C.border) : C.border}`,
+                  borderRadius: 12, padding: 14, cursor: "pointer", textAlign: "center"
+                }}>
+                  <div style={{ fontSize: 26, marginBottom: 4 }}>{q.icon}</div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{q.label}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {tab === "orders" && <OrdersManagement ctx={ctx} />}
+        {tab === "products" && <ProductsManagement ctx={ctx} />}
+        {tab === "categories" && <CategoriesManagement ctx={ctx} />}
+        {tab === "customers" && <CustomersManagement ctx={ctx} />}
+      </div>
+    </div>
+  );
+}
+
+// ─── ORDERS MANAGEMENT ──────────────────────────────────────────────────────────
+function OrdersManagement({ ctx }) {
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <h3 style={{ fontSize: 16, fontWeight: 700 }}>כל ההזמנות ({ctx.orders.length})</h3>
+        <Btn size="sm" onClick={() => { ctx.setUser(null); ctx.setNewOrderMode(true); ctx.setScreen("login"); }}>+ הזמנה חדשה</Btn>
+      </div>
+      {ctx.orders.length === 0 && <p style={{ color: C.textMuted, textAlign: "center", padding: 32 }}>אין הזמנות עדיין</p>}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {[...ctx.orders].sort((a,b) => new Date(a.deliveryDate) - new Date(b.deliveryDate)).map(o => (
+          <Card key={o.id} style={{ fontSize: 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <div>
+                <strong>{o.customerName}</strong> – {fmtDate(o.deliveryDate)}
+                <div style={{ color: C.textMuted, fontSize: 13 }}>{o.items?.length} פריטים | {o.pickupType === "delivery" ? "🚚" : "🏪"}</div>
+              </div>
+              <Badge color={C.warning}>{STATUS_LABELS[o.status]}</Badge>
+            </div>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── PRODUCTS MANAGEMENT ────────────────────────────────────────────────────────
+function ProductsManagement({ ctx }) {
+  const [modal, setModal] = useState(null); // null | 'new' | product
+  const [form, setForm] = useState({});
+
+  const openNew = () => {
+    setForm({ name: "", nameHi: "", categoryId: "", price: "", minQty: 1, maxQty: "", departments: [], stockDependent: false, active: true });
+    setModal("new");
+  };
+  const openEdit = (p) => { setForm({ ...p }); setModal(p); };
+
+  const save = async () => {
+    if (!form.name || !form.categoryId || form.price === "") return;
+    const p = {
+      ...form, id: form.id || uid(),
+      price: Number(form.price), minQty: Number(form.minQty) || 1, maxQty: Number(form.maxQty) || 9999,
+      saleActive: !!form.saleActive,
+      saleType: form.saleType || "percent",
+      saleValue: Number(form.saleValue) || 0,
+      saleFrom: form.saleFrom || "",
+      saleTo: form.saleTo || "",
+    };
+    const existing = ctx.products.findIndex(x => x.id === p.id);
+    const updated = existing >= 0 ? ctx.products.map(x => x.id === p.id ? p : x) : [...ctx.products, p];
+    await ctx.saveProducts(updated);
+    setModal(null);
+    ctx.showToast(existing >= 0 ? "מוצר עודכן" : "מוצר נוסף");
+  };
+
+  const toggleDept = (d) => {
+    const deps = form.departments || [];
+    setForm({ ...form, departments: deps.includes(d) ? deps.filter(x => x !== d) : [...deps, d] });
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <h3 style={{ fontSize: 16, fontWeight: 700 }}>מוצרים ({ctx.products.length})</h3>
+        <Btn size="sm" onClick={openNew}>+ מוצר חדש</Btn>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {ctx.products.map(p => {
+          const cat = ctx.categories.find(c => c.id === p.categoryId);
+          return (
+            <Card key={p.id} onClick={() => openEdit(p)} style={{ cursor: "pointer", opacity: p.active ? 1 : 0.5 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontWeight: 700 }}>{p.name}</div>
+                  <div style={{ fontSize: 13, color: C.textMuted }}>
+                    {cat?.name} | ₪{fmt(p.price)}
+                    {p.saleActive && <span style={{ marginRight: 6, background: "#F59E0B", color: "#fff", borderRadius: 4, padding: "1px 7px", fontSize: 11, fontWeight: 700 }}>🏷️ מבצע</span>}
+                  </div>
+                  <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
+                    {p.departments?.map(d => <Badge key={d} color={C.dept[d]}>{d}</Badge>)}
+                  </div>
+                </div>
+                {!p.active && <Badge color={C.danger}>לא פעיל</Badge>}
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+
+      {modal && (
+        <Modal title={modal === "new" ? "מוצר חדש" : `עריכה: ${form.name}`} onClose={() => setModal(null)} width={500}>
+          <Input label="שם המוצר" value={form.name || ""} onChange={v => setForm({ ...form, name: v })} required />
+          <Input label="שם בהינדי (אופציונלי)" value={form.nameHi || ""} onChange={v => setForm({ ...form, nameHi: v })} />
+          <Select label="קטגוריה" value={form.categoryId || ""} onChange={v => setForm({ ...form, categoryId: v })} required
+            options={[{ value: "", label: "בחר קטגוריה..." }, ...ctx.categories.map(c => ({ value: c.id, label: c.name }))]} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+            <Input label="מחיר ₪" value={form.price} onChange={v => setForm({ ...form, price: v })} type="number" required />
+            <Input label="מינימום" value={form.minQty} onChange={v => setForm({ ...form, minQty: v })} type="number" />
+            <Input label="מקסימום" value={form.maxQty} onChange={v => setForm({ ...form, maxQty: v })} type="number" />
+          </div>
+
+          {/* מבצע */}
+          <div style={{ background: form.saleActive ? "#FFF8E1" : C.bg, border: `1.5px solid ${form.saleActive ? "#F59E0B" : C.border}`, borderRadius: 10, padding: "12px 14px", marginBottom: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: form.saleActive ? 12 : 0 }}>
+              <input type="checkbox" id="saleActive" checked={!!form.saleActive} onChange={e => setForm({ ...form, saleActive: e.target.checked })} style={{ width: 18, height: 18, cursor: "pointer" }} />
+              <label htmlFor="saleActive" style={{ fontSize: 14, fontWeight: 700, cursor: "pointer", color: form.saleActive ? "#92400E" : C.text }}>
+                🏷️ מוצר במבצע
+              </label>
+              {form.saleActive && form.saleValue > 0 && (
+                <span style={{ marginRight: "auto", background: "#F59E0B", color: "#fff", borderRadius: 6, padding: "2px 10px", fontSize: 13, fontWeight: 700 }}>
+                  {form.saleType === "percent" ? `-${form.saleValue}%` : `₪${Number(form.price) - form.saleValue}`}
+                </span>
+              )}
+            </div>
+            {form.saleActive && (
+              <div>
+                <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                  {[["percent","% הנחה"],["fixed","מחיר קבוע"]].map(([v,l]) => (
+                    <button key={v} onClick={() => setForm({ ...form, saleType: v })}
+                      style={{ flex: 1, padding: "7px 0", border: `1.5px solid ${form.saleType === v ? "#F59E0B" : C.border}`, borderRadius: 8, background: form.saleType === v ? "#FFF8E1" : C.surface, fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "Heebo, sans-serif", color: form.saleType === v ? "#92400E" : C.textMuted }}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: C.textMuted, marginBottom: 3 }}>
+                      {form.saleType === "percent" ? "אחוז הנחה" : "מחיר מבצע ₪"}
+                    </label>
+                    <input type="number" value={form.saleValue || ""} onChange={e => setForm({ ...form, saleValue: e.target.value })}
+                      placeholder={form.saleType === "percent" ? "10" : "9.90"}
+                      style={{ width: "100%", padding: "8px 10px", border: `1.5px solid ${C.border}`, borderRadius: 8, fontSize: 14, fontFamily: "Heebo, sans-serif" }} />
+                    {form.saleType === "percent" && form.saleValue > 0 && form.price > 0 && (
+                      <div style={{ fontSize: 11, color: "#92400E", marginTop: 3 }}>מחיר אחרי הנחה: ₪{(Number(form.price) * (1 - form.saleValue/100)).toFixed(2)}</div>
+                    )}
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: C.textMuted, marginBottom: 3 }}>מתאריך</label>
+                    <input type="date" value={form.saleFrom || ""} onChange={e => setForm({ ...form, saleFrom: e.target.value })}
+                      style={{ width: "100%", padding: "7px 8px", border: `1.5px solid ${C.border}`, borderRadius: 8, fontSize: 13 }} />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: C.textMuted, marginBottom: 3 }}>עד תאריך</label>
+                    <input type="date" value={form.saleTo || ""} onChange={e => setForm({ ...form, saleTo: e.target.value })}
+                      style={{ width: "100%", padding: "7px 8px", border: `1.5px solid ${C.border}`, borderRadius: 8, fontSize: 13 }} />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: C.textMuted, marginBottom: 8 }}>מחלקות רלוונטיות</label>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {DEPARTMENTS.map(d => (
+                <button key={d} onClick={() => toggleDept(d)} style={{
+                  padding: "6px 14px", borderRadius: 20, border: `1.5px solid ${(form.departments || []).includes(d) ? C.dept[d] : C.border}`,
+                  background: (form.departments || []).includes(d) ? C.dept[d] : C.surface,
+                  color: (form.departments || []).includes(d) ? "#fff" : C.text, cursor: "pointer", fontWeight: 600, fontSize: 13
+                }}>{d}</button>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+            <input type="checkbox" checked={form.active} onChange={e => setForm({ ...form, active: e.target.checked })} id="active" />
+            <label htmlFor="active" style={{ fontSize: 14, fontWeight: 600 }}>מוצר פעיל</label>
+          </div>
+
+          <div style={{ display: "flex", gap: 10 }}>
+            <Btn variant="ghost" onClick={() => setModal(null)} style={{ flex: 1 }}>ביטול</Btn>
+            <Btn onClick={save} style={{ flex: 2 }}>שמור</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ─── CATEGORIES MANAGEMENT ──────────────────────────────────────────────────────
+function CategoriesManagement({ ctx }) {
+  const [modal, setModal] = useState(null);
+  const [form, setForm] = useState({ name: "", nameHi: "", order: 1 });
+
+  const save = async () => {
+    if (!form.name) return;
+    const cat = { ...form, id: form.id || uid() };
+    const existing = ctx.categories.findIndex(c => c.id === cat.id);
+    const updated = existing >= 0 ? ctx.categories.map(c => c.id === cat.id ? cat : c) : [...ctx.categories, cat];
+    await ctx.saveCategories(updated);
+    setModal(null);
+    ctx.showToast("קטגוריה נשמרה");
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <h3 style={{ fontSize: 16, fontWeight: 700 }}>קטגוריות ({ctx.categories.length})</h3>
+        <Btn size="sm" onClick={() => { setForm({ name: "", nameHi: "", order: ctx.categories.length + 1 }); setModal("new"); }}>+ קטגוריה</Btn>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {[...ctx.categories].sort((a, b) => a.order - b.order).map(cat => {
+          const count = ctx.products.filter(p => p.categoryId === cat.id).length;
+          return (
+            <Card key={cat.id} onClick={() => { setForm({ ...cat }); setModal(cat); }} style={{ cursor: "pointer" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontWeight: 700 }}>{cat.name}</div>
+                  {cat.nameHi && <div style={{ fontSize: 13, color: C.textMuted }}>{cat.nameHi}</div>}
+                </div>
+                <Badge color={C.primary}>{count} מוצרים</Badge>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+
+      {modal && (
+        <Modal title={modal === "new" ? "קטגוריה חדשה" : `עריכה: ${form.name}`} onClose={() => setModal(null)} width={380}>
+          <Input label="שם קטגוריה" value={form.name} onChange={v => setForm({ ...form, name: v })} required />
+          <Input label="שם בהינדי" value={form.nameHi || ""} onChange={v => setForm({ ...form, nameHi: v })} />
+          <Input label="סדר תצוגה" value={form.order} onChange={v => setForm({ ...form, order: Number(v) })} type="number" />
+          <div style={{ display: "flex", gap: 10 }}>
+            <Btn variant="ghost" onClick={() => setModal(null)} style={{ flex: 1 }}>ביטול</Btn>
+            <Btn onClick={save} style={{ flex: 2 }}>שמור</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+// ─── CUSTOMERS MANAGEMENT ────────────────────────────────────────────────────────
+function CustomersManagement({ ctx }) {
+  const [modal, setModal] = useState(null);
+  const [form, setForm] = useState({});
+
+  const save = async () => {
+    if (!form.name || !form.phone) return;
+    const c = { ...form, id: form.id || uid(), createdAt: form.createdAt || new Date().toISOString() };
+    const existing = ctx.customers.findIndex(x => x.id === c.id);
+    const updated = existing >= 0 ? ctx.customers.map(x => x.id === c.id ? c : x) : [...ctx.customers, c];
+    await ctx.saveCustomers(updated);
+    setModal(null);
+    ctx.showToast("לקוח נשמר");
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <h3 style={{ fontSize: 16, fontWeight: 700 }}>לקוחות ({ctx.customers.length})</h3>
+        <Btn size="sm" onClick={() => { setForm({ name: "", phone: "", type: "private", routeId: "", active: true }); setModal("new"); }}>+ לקוח חדש</Btn>
+      </div>
+      {ctx.customers.length === 0 && <p style={{ color: C.textMuted, textAlign: "center", padding: 32 }}>אין לקוחות רשומים</p>}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {ctx.customers.map(c => (
+          <Card key={c.id} onClick={() => { setForm({ ...c }); setModal(c); }} style={{ cursor: "pointer" }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <div>
+                <div style={{ fontWeight: 700 }}>{c.name}</div>
+                <div style={{ fontSize: 13, color: C.textMuted }}>{c.phone}</div>
+              </div>
+              <Badge color={c.type === "business" ? C.primary : C.accent}>{c.type === "business" ? "עסקי" : "פרטי"}</Badge>
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      {modal && (
+        <Modal title={modal === "new" ? "לקוח חדש" : `עריכה: ${form.name}`} onClose={() => setModal(null)} width={420}>
+          <Input label="שם מלא" value={form.name || ""} onChange={v => setForm({ ...form, name: v })} required />
+          <Input label="טלפון" value={form.phone || ""} onChange={v => setForm({ ...form, phone: v })} type="tel" required />
+          <Select label="סוג לקוח" value={form.type || "private"} onChange={v => setForm({ ...form, type: v })}
+            options={[{ value: "private", label: "פרטי" }, { value: "business", label: "עסקי" }]} />
+          {form.type === "business" && (
+            <Select label="קו חלוקה" value={form.routeId || ""} onChange={v => setForm({ ...form, routeId: v })}
+              options={[{ value: "", label: "ללא קו חלוקה" }, ...ctx.routes.map(r => ({ value: r.id, label: r.name }))]} />
+          )}
+          <div style={{ display: "flex", gap: 10 }}>
+            <Btn variant="ghost" onClick={() => setModal(null)} style={{ flex: 1 }}>ביטול</Btn>
+            <Btn onClick={save} style={{ flex: 2 }}>שמור</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+
+  const root = ReactDOM.createRoot(document.getElementById('root'));
+  root.render(React.createElement(App));
+  </script>
+</body>
+</html>
